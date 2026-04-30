@@ -10,11 +10,15 @@ export function AuthProvider({ children }) {
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    const storedUser = localStorage.getItem("re_user");
+    const storedUser = localStorage.getItem("erp-user");
     const token = localStorage.getItem("erp-token");
 
     if (storedUser && token) {
-      setUser(JSON.parse(storedUser));
+      try {
+        setUser(JSON.parse(storedUser));
+      } catch (e) {
+        console.log("Invalid user data");
+      }
     }
 
     setLoading(false);
@@ -52,4 +56,13 @@ export function AuthProvider({ children }) {
   );
 }
 
-export const useAuth = () => useContext(AuthContext);
+// SAFE HOOK
+export const useAuth = () => {
+  const context = useContext(AuthContext);
+
+  if (!context) {
+    return { user: null, loading: true, login: () => {}, logout: () => {} };
+  }
+
+  return context;
+};
