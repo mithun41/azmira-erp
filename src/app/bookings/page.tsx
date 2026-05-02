@@ -11,199 +11,205 @@ import { fetchList, createItem, updateItem, deleteItem, ENDPOINTS } from '@/lib/
 import { fmt } from '@/lib/utils'
 import { FiEdit2, FiTrash2, FiEye } from 'react-icons/fi'
 
-const EMPTY: any = {
+const EMPTY = {
   booking_code: '',
-  customer: 0,
-  plot: 0,
-  project: 0,
-  marketing_officer: 0,
+  customer: '',
+  plot: '',
+  project: '',
+  marketing_officer: '',
+  transferred_to: '',
   booking_date: '',
   total_price: 0,
   discount_amount: 0,
-  gift_amount: 0,
   final_price: 0,
   token_amount: 0,
   token_paid_date: '',
   down_payment_amount: 0,
   down_payment_date: '',
-  status: '',
+  status: 'pending',
   notes: ''
 }
 
 export default function Page() {
-  const [items, setItems] = useState<any[]>([])
+  const [items, setItems] = useState([])
   const [loading, setLoading] = useState(true)
-  const [modal, setModal] = useState<'add'|'edit'|'view'|null>(null)
-  const [form, setForm] = useState<any>(EMPTY)
-  const [selected, setSelected] = useState<any>(null)
+  const [modal, setModal] = useState(null)
+  const [form, setForm] = useState(EMPTY)
+  const [selected, setSelected] = useState(null)
   const [saving, setSaving] = useState(false)
+  const [error, setError] = useState(null)
 
-  // 🔥 ERROR STATE ADDED
-  const [error, setError] = useState<any>(null)
+  // dropdown data
+  const [customers, setCustomers] = useState([])
+  const [plots, setPlots] = useState([])
+  const [projects, setProjects] = useState([])
+  const [officers, setOfficers] = useState([])
 
   const ep = ENDPOINTS.bookings
 
   const load = () => {
     setLoading(true)
-    setError(null)
-
     fetchList(ep.list())
       .then(r => setItems(r.data))
-      .catch(err => {
-        const apiError = err?.response?.data || err.message
-        console.log('LOAD ERROR:', apiError)
-        setError(apiError)
-      })
       .finally(() => setLoading(false))
   }
 
   useEffect(() => {
     load()
+    fetchList(ENDPOINTS.customers.list()).then(r => setCustomers(r.data))
+    fetchList(ENDPOINTS.plots.list()).then(r => setPlots(r.data))
+    fetchList(ENDPOINTS.projects.list()).then(r => setProjects(r.data))
+    fetchList(ENDPOINTS.officers.list()).then(r => setOfficers(r.data))
   }, [])
 
-  const f = (k: string) => (e: any) =>
-    setForm((p:any) => ({ ...p, [k]: e.target.value }))
+  const f = (k) => (e) => {
+    setForm(p => ({ ...p, [k]: e.target.value }))
+  }
 
-  const openAdd  = () => {
+  const openAdd = () => {
     setForm(EMPTY)
     setError(null)
     setModal('add')
   }
 
-  const openEdit = (item: any) => {
-    setSelected(item)
-    setForm(item)
-    setError(null)
-    setModal('edit')
-  }
+  const openEdit = (item) => {
+    setSelected(item);
 
-  const openView = (item: any) => {
+    const customerId = customers.find(c => c.full_name === item.customer)?.id;
+    const plotId = plots.find(p => p.plot_number === item.plot)?.id;
+    const projectId = projects.find(p => p.project_name === item.project)?.id;
+    const officerId = officers.find(o => o.user?.full_name === item.marketing_officer)?.id;
+
+    setForm({
+      ...item,
+      customer: customerId ? String(customerId) : '',
+      plot: plotId ? String(plotId) : '',
+      project: projectId ? String(projectId) : '',
+      marketing_officer: officerId ? String(officerId) : (item.marketing_officer_id ? String(item.marketing_officer_id) : ''),
+      // নতুন ফিল্ডগুলো ফর্ম স্টেটে নিশ্চিত করা
+      down_payment_amount: item.down_payment_amount || 0,
+      down_payment_date: item.down_payment_date || '',
+    });
+
+    setError(null);
+    setModal('edit');
+  };
+
+  const openView = (item) => {
     setSelected(item)
     setModal('view')
   }
 
-  // 🔥 SAVE WITH ERROR HANDLING
   const save = async () => {
     setSaving(true)
     setError(null)
 
     try {
+      const payload = {
+        ...form,
+        customer: Number(form.customer),
+        plot: Number(form.plot),
+        project: Number(form.project),
+        marketing_officer: form.marketing_officer ? Number(form.marketing_officer) : null,
+        transferred_to: form.transferred_to ? Number(form.transferred_to) : null,
+        total_price: Number(form.total_price),
+        discount_amount: Number(form.discount_amount),
+        token_amount: Number(form.token_amount),
+        down_payment_amount: Number(form.down_payment_amount), // কনভার্সন অ্যাড করা হয়েছে
+        final_price: Number(form.total_price) - Number(form.discount_amount)
+      }
+
       if (modal === 'add') {
-        await createItem(ep.create(), form)
-        toast.success('Created')
+        await createItem(ep.create(), payload)
+        toast.success('Created Successfully')
       } else {
-        await updateItem(ep.detail(selected.id), form)
-        toast.success('Updated')
+        await updateItem(ep.detail(selected.id), payload)
+        toast.success('Updated Successfully')
       }
 
       setModal(null)
       load()
-
-    } catch (err: any) {
-      const apiError = err?.response?.data || err.message
-
-      console.log('🔥 SAVE ERROR:', apiError)
-      setError(apiError)
-
-      toast.error('Validation Error')
+    } catch (err) {
+      setError(err?.response?.data || err.message)
+      toast.error('Failed to save data')
     } finally {
       setSaving(false)
     }
   }
 
-  const remove = async (id: number) => {
-    if (!confirm('Delete?')) return
+  const remove = async (id) => {
+    if (!confirm('Are you sure you want to delete this booking?')) return
     try {
       await deleteItem(ep.detail(id))
       toast.success('Deleted')
       load()
     } catch {
-      toast.error('Failed')
+      toast.error('Failed to delete')
     }
   }
 
   return (
     <AppShell>
-      <PageHeader
-        title="Bookings"
-        subtitle="Booking management"
-        onAdd={openAdd}
-        addLabel="New Booking"
+      <PageHeader 
+        title="Bookings" 
+        subtitle="Manage property bookings and payments" 
+        onAdd={openAdd} 
+        addLabel="New Booking" 
       />
 
-      {/* 🔥 ERROR DISPLAY (NO UI CHANGE OTHERWISE) */}
       {error && (
-        <div style={{
-          background: '#fee2e2',
-          color: '#991b1b',
-          padding: 10,
-          marginBottom: 10,
-          borderRadius: 8,
-          fontSize: 13
-        }}>
-          <strong>API Error:</strong>
-          <pre style={{ marginTop: 5, whiteSpace: 'pre-wrap' }}>
-            {JSON.stringify(error, null, 2)}
-          </pre>
+        <div style={{ background: '#fee2e2', color: '#991b1b', padding: 12, marginBottom: 15, borderRadius: 8, fontSize: 13 }}>
+          <strong>Error Details:</strong>
+          <pre style={{ marginTop: 5, whiteSpace: 'pre-wrap' }}>{JSON.stringify(error, null, 2)}</pre>
         </div>
       )}
 
       <div className="card">
-        {loading ? (
-          <Spinner />
-        ) : items.length === 0 ? (
-          <Empty />
-        ) : (
+        {loading ? <Spinner /> : items.length === 0 ? <Empty /> : (
           <div className="table-wrap">
             <table>
               <thead>
                 <tr>
-                  <th>booking_code</th>
-                  <th>customer</th>
-                  <th>plot</th>
-                  <th>project</th>
-                  <th>booking_date</th>
-                  <th>final_price</th>
-                  <th>total_paid</th>
-                  <th>total_due</th>
-                  <th>status</th>
-                  <th>Actions</th>
+                  <th>Code</th>
+                  <th>Customer</th>
+                  <th>Plot</th>
+                  <th>Project</th>
+                  <th>Date</th>
+                  <th>Final Price</th>
+                  <th>Due</th>
+                  <th>Status</th>
+                  <th style={{ textAlign: 'right' }}>Actions</th>
                 </tr>
               </thead>
-
               <tbody>
                 {items.map(item => (
                   <tr key={item.id}>
-                    <td>{item.booking_code ?? '—'}</td>
-                    <td>{item.customer ?? '—'}</td>
-                    <td>{item.plot ?? '—'}</td>
-                    <td>{item.project ?? '—'}</td>
-                    <td>{item.booking_date ?? '—'}</td>
+                    <td><span style={{ fontWeight: 600 }}>{item.booking_code}</span></td>
+                    <td>{item.customer_name || item.customer}</td>
+                    <td>{item.plot_name || item.plot}</td>
+                    <td>{item.project_name || item.project}</td>
+                    <td>{item.booking_date || '—'}</td>
                     <td>{fmt.currency(item.final_price)}</td>
-                    <td>{item.total_paid ?? '—'}</td>
-                    <td>{item.total_due ?? '—'}</td>
-                    <td><Badge status={String(item.status)} /></td>
-
+                    <td style={{ color: Number(item.total_due) > 0 ? '#dc2626' : '#16a34a', fontWeight: 500 }}>
+        {fmt.currency(item.total_due)}
+      </td>
+                    <td><Badge status={item.status} /></td>
                     <td>
-                      <div style={{ display:'flex', gap:6 }}>
-                        <button onClick={() => openView(item)}
-                          style={{ background:'#e0f2fe', color:'#0369a1', border:'none', padding:'4px 8px', borderRadius:6 }}>
-                          <FiEye size={13}/>
+                      <div style={{ display: 'flex', gap: 6, justifyContent: 'flex-end' }}>
+                        <button onClick={() => openView(item)} title="View"
+                          style={{ background: '#e0f2fe', color: '#0369a1', border: 'none', padding: '6px', borderRadius: 6, cursor: 'pointer' }}>
+                          <FiEye size={14} />
                         </button>
-
-                        <button onClick={() => openEdit(item)}
-                          style={{ background:'#fef9c3', color:'#92400e', border:'none', padding:'4px 8px', borderRadius:6 }}>
-                          <FiEdit2 size={13}/>
+                        <button onClick={() => openEdit(item)} title="Edit"
+                          style={{ background: '#fef9c3', color: '#92400e', border: 'none', padding: '6px', borderRadius: 6, cursor: 'pointer' }}>
+                          <FiEdit2 size={14} />
                         </button>
-
-                        <button onClick={() => remove(item.id)}
-                          className="btn-danger"
-                          style={{ padding:'4px 8px' }}>
-                          <FiTrash2 size={13}/>
+                        <button onClick={() => remove(item.id)} title="Delete"
+                          style={{ background: '#fee2e2', color: '#991b1b', border: 'none', padding: '6px', borderRadius: 6, cursor: 'pointer' }}>
+                          <FiTrash2 size={14} />
                         </button>
                       </div>
                     </td>
-
                   </tr>
                 ))}
               </tbody>
@@ -212,147 +218,141 @@ export default function Page() {
         )}
       </div>
 
-      {/* ================= MODAL ================= */}
+      {/* ================= ADD / EDIT MODAL ================= */}
       {(modal === 'add' || modal === 'edit') && (
-        <Modal
-          title={modal === 'add' ? 'New Bookings' : 'Edit Bookings'}
-          onClose={() => setModal(null)}
-          size="lg"
-        >
+        <Modal title={modal === 'add' ? 'Create New Booking' : 'Edit Booking'} onClose={() => setModal(null)} size="lg">
           <div className="modal-body">
             <div className="form-grid">
-
-              <div><label className="label">Booking Code *</label>
-                <input className="input" type="text"
-                  value={form.booking_code||''}
-                  onChange={f('booking_code')} />
+              <div>
+                <label className="label">Booking Code</label>
+                <input className="input" value={form.booking_code} onChange={f('booking_code')} />
               </div>
 
-              <div><label className="label">Customer ID *</label>
-                <input className="input" type="number"
-                  value={form.customer||''}
-                  onChange={f('customer')} />
+              <div>
+                <label className="label">Customer</label>
+                <select className="input" value={form.customer} onChange={f('customer')}>
+                  <option value="">Select Customer</option>
+                  {customers.map(c => (
+                    <option key={c.id} value={String(c.id)}>{c.full_name}</option>
+                  ))}
+                </select>
               </div>
 
-              <div><label className="label">Plot ID *</label>
-                <input className="input" type="number"
-                  value={form.plot||''}
-                  onChange={f('plot')} />
+              <div>
+                <label className="label">Plot</label>
+                <select className="input" value={form.plot} onChange={f('plot')}>
+                  <option value="">Select Plot</option>
+                  {plots.map(p => (
+                    <option key={p.id} value={String(p.id)}>{p.plot_number}</option>
+                  ))}
+                </select>
               </div>
 
-              <div><label className="label">Project ID *</label>
-                <input className="input" type="number"
-                  value={form.project||''}
-                  onChange={f('project')} />
+              <div>
+                <label className="label">Project</label>
+                <select className="input" value={form.project} onChange={f('project')}>
+                  <option value="">Select Project</option>
+                  {projects.map(p => (
+                    <option key={p.id} value={String(p.id)}>{p.project_name}</option>
+                  ))}
+                </select>
               </div>
 
-              <div><label className="label">Marketing Officer ID</label>
-                <input className="input" type="number"
-                  value={form.marketing_officer||''}
-                  onChange={f('marketing_officer')} />
+              <div>
+                <label className="label">Marketing Officer</label>
+                <select className="input" value={form.marketing_officer} onChange={f('marketing_officer')}>
+                  <option value="">Select Officer</option>
+                  {officers.map(o => <option key={o.id} value={String(o.id)}>{o.user?.full_name || o.id}</option>)}
+                </select>
               </div>
 
-              <div><label className="label">Booking Date</label>
-                <input className="input" type="date"
-                  value={form.booking_date||''}
-                  onChange={f('booking_date')} />
+              <div>
+                <label className="label">Booking Date</label>
+                <input className="input" type="date" value={form.booking_date} onChange={f('booking_date')} />
               </div>
 
-              <div><label className="label">Total Price</label>
-                <input className="input" type="number"
-                  value={form.total_price||''}
-                  onChange={f('total_price')} />
+              <div>
+                <label className="label">Total Price</label>
+                <input className="input" type="number" value={form.total_price} onChange={f('total_price')} />
               </div>
 
-              <div><label className="label">Discount</label>
-                <input className="input" type="number"
-                  value={form.discount_amount||''}
-                  onChange={f('discount_amount')} />
+              <div>
+                <label className="label">Discount Amount</label>
+                <input className="input" type="number" value={form.discount_amount} onChange={f('discount_amount')} />
               </div>
 
-              <div><label className="label">Gift Amount</label>
-                <input className="input" type="number"
-                  value={form.gift_amount||''}
-                  onChange={f('gift_amount')} />
+              <div>
+                <label className="label">Token Amount</label>
+                <input className="input" type="number" value={form.token_amount} onChange={f('token_amount')} />
               </div>
 
-              <div><label className="label">Final Price *</label>
-                <input className="input" type="number"
-                  value={form.final_price||''}
-                  onChange={f('final_price')} />
+              <div>
+                <label className="label">Token Paid Date</label>
+                <input className="input" type="date" value={form.token_paid_date} onChange={f('token_paid_date')} />
               </div>
 
-              <div><label className="label">Token Amount</label>
-                <input className="input" type="number"
-                  value={form.token_amount||''}
-                  onChange={f('token_amount')} />
+              {/* 🔥 নতুন ফিল্ডগুলো এখানে যোগ করা হয়েছে */}
+              <div>
+                <label className="label">Down Payment Amount</label>
+                <input className="input" type="number" value={form.down_payment_amount} onChange={f('down_payment_amount')} />
               </div>
 
-              <div><label className="label">Token Paid Date</label>
-                <input className="input" type="date"
-                  value={form.token_paid_date||''}
-                  onChange={f('token_paid_date')} />
+              <div>
+                <label className="label">Down Payment Date</label>
+                <input className="input" type="date" value={form.down_payment_date} onChange={f('down_payment_date')} />
               </div>
 
-              <div><label className="label">Down Payment</label>
-                <input className="input" type="number"
-                  value={form.down_payment_amount||''}
-                  onChange={f('down_payment_amount')} />
-              </div>
-
-              <div><label className="label">Down Payment Date</label>
-                <input className="input" type="date"
-                  value={form.down_payment_date||''}
-                  onChange={f('down_payment_date')} />
-              </div>
-
-              <div><label className="label">Status</label>
-                <select className="input"
-                  value={form.status||''}
-                  onChange={f('status')}>
-                  <option value="pending">pending</option>
-                  <option value="confirmed">confirmed</option>
-                  <option value="agreement_done">agreement done</option>
-                  <option value="registration_done">registration done</option>
-                  <option value="cancelled">cancelled</option>
-                  <option value="transferred">transferred</option>
+              <div>
+                <label className="label">Status</label>
+                <select className="input" value={form.status} onChange={f('status')}>
+                  <option value="pending">Pending</option>
+                  <option value="confirmed">Confirmed</option>
+                  <option value="agreement_done">Agreement Done</option>
+                  <option value="registration_done">Registration Done</option>
+                  <option value="cancelled">Cancelled</option>
+                  <option value="transferred">Transferred</option>
                 </select>
               </div>
 
               <div className="full">
                 <label className="label">Notes</label>
-                <textarea className="input"
-                  rows={2}
-                  value={form.notes||''}
-                  onChange={f('notes')} />
+                <textarea className="input" rows={2} value={form.notes} onChange={f('notes')} />
               </div>
-
             </div>
           </div>
 
           <div className="modal-footer">
             <button className="btn-secondary" onClick={() => setModal(null)}>Cancel</button>
             <button className="btn-primary" onClick={save} disabled={saving}>
-              {saving ? 'Saving...' : 'Save'}
+              {saving ? 'Saving...' : 'Save Changes'}
             </button>
           </div>
         </Modal>
       )}
 
-      {/* ================= VIEW ================= */}
+      {/* ================= VIEW DETAILS MODAL ================= */}
       {modal === 'view' && selected && (
-        <Modal title="Bookings Details" onClose={() => setModal(null)} size="lg">
+        <Modal title="Booking Detailed View" onClose={() => setModal(null)} size="lg">
           <div className="modal-body">
             <div className="form-grid">
-              {Object.entries(selected)
-                .filter(([k]) => !['created_at','updated_at'].includes(k))
-                .map(([k,v]) => (
-                  <div key={k}>
-                    <div className="label">{k.replace(/_/g,' ')}</div>
-                    <div style={{ fontSize:14, fontWeight:500 }}>{String(v) || '—'}</div>
+              {Object.entries(selected).map(([key, val]) => {
+                if (['customer_id', 'plot_id', 'project_id', 'marketing_officer_id'].includes(key)) return null;
+                
+                return (
+                  <div key={key} style={{ borderBottom: '1px solid #f3f4f6', paddingBottom: 8 }}>
+                    <div className="label" style={{ textTransform: 'capitalize', color: '#6b7280' }}>
+                      {key.replace(/_/g, ' ')}
+                    </div>
+                    <div style={{ fontWeight: 500, fontSize: 14 }}>
+                      {typeof val === 'number' && key.includes('price') ? fmt.currency(val) : String(val || '—')}
+                    </div>
                   </div>
-                ))}
+                )
+              })}
             </div>
+          </div>
+          <div className="modal-footer">
+            <button className="btn-primary" onClick={() => setModal(null)}>Close</button>
           </div>
         </Modal>
       )}

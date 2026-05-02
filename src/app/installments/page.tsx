@@ -11,52 +11,132 @@ import { fetchList, createItem, updateItem, deleteItem, ENDPOINTS } from '@/lib/
 import { fmt } from '@/lib/utils'
 import { FiEdit2, FiTrash2, FiEye } from 'react-icons/fi'
 
-const EMPTY: any = {booking: 0, installment_number: 0, due_date: '', amount: 0, paid_amount: 0, paid_date: '', notes: ''}
+// জেনারেশনের জন্য প্রয়োজনীয় ৩টি ফিল্ড
+const GEN_EMPTY = { booking_id: '', number_of_installments: '', start_date: '' }
 
 export default function Page() {
   const [items, setItems] = useState<any[]>([])
   const [loading, setLoading] = useState(true)
-  const [modal, setModal] = useState<'add'|'edit'|'view'|null>(null)
-  const [form, setForm] = useState<any>(EMPTY)
+  const [modal, setModal] = useState<'add' | 'edit' | 'view' | null>(null)
+  const [form, setForm] = useState<any>(GEN_EMPTY)
   const [selected, setSelected] = useState<any>(null)
   const [saving, setSaving] = useState(false)
 
+  // API Endpoint Object
   const ep = ENDPOINTS.installments
-  const load = () => { setLoading(true); fetchList(ep.list()).then(r => setItems(r.data)).finally(() => setLoading(false)) }
+
+  // এপিআই কল করে লিস্ট লোড করা
+  const load = () => { 
+    setLoading(true)
+    fetchList(ep.list())
+      .then(r => setItems(r.data))
+      .catch(() => toast.error('Failed to load installments'))
+      .finally(() => setLoading(false)) 
+  }
+
   useEffect(() => { load() }, [])
-  const f = (k: string) => (e: any) => setForm((p:any) => ({ ...p, [k]: e.target.value }))
-  const openAdd  = () => { setForm(EMPTY); setModal('add') }
-  const openEdit = (item: any) => { setSelected(item); setForm(item); setModal('edit') }
+
+  const f = (k: string) => (e: any) => setForm((p: any) => ({ ...p, [k]: e.target.value }))
+
+  const openAdd = () => { 
+    setForm(GEN_EMPTY)
+    setModal('add') 
+  }
+
+  const openEdit = (item: any) => { 
+    setSelected(item)
+    // এডিট এর সময় ব্যাকএন্ডের রিলেশন অনুযায়ী শুধু পেইড অ্যামাউন্ট ও নোটস আপডেট করা হবে
+    setForm({
+      paid_amount: item.paid_amount,
+      notes: item.notes || ''
+    })
+    setModal('edit') 
+  }
+
   const openView = (item: any) => { setSelected(item); setModal('view') }
+
   const save = async () => {
     setSaving(true)
     try {
-      if (modal === 'add') { await createItem(ep.create(), form); toast.success('Created') }
-      else { await updateItem(ep.detail(selected.id), form); toast.success('Updated') }
-      setModal(null); load()
-    } catch { toast.error('Failed') } finally { setSaving(false) }
+      if (modal === 'add') {
+        /** 
+         * যেহেতু এটি একটি স্পেশাল জেনারেট ভিউ, 
+         * আপনার ENDPOINTS.installments ফাইলে যদি 'generate' কী থাকে তবে সেটি ব্যবহার করবেন।
+         * না থাকলে create() মেথডটিই ব্যবহার করা হলো।
+         */
+        await createItem(ep.create(), form)
+        toast.success('Schedule Generated')
+      } else {
+        // এপিআই কল করে স্পেসিফিক আইডি আপডেট করা
+        await updateItem(ep.detail(selected.id), form)
+        toast.success('Updated')
+      }
+      setModal(null)
+      load()
+    } catch (err: any) {
+      toast.error('Operation failed')
+    } finally {
+      setSaving(false)
+    }
   }
+
   const remove = async (id: number) => {
-    if (!confirm('Delete?')) return
-    try { await deleteItem(ep.detail(id)); toast.success('Deleted'); load() } catch { toast.error('Failed') }
+    if (!confirm('Delete this record?')) return
+    try {
+      await deleteItem(ep.detail(id))
+      toast.success('Deleted')
+      load()
+    } catch {
+      toast.error('Failed')
+    }
   }
 
   return (
     <AppShell>
-      <PageHeader title="Installment Plans" subtitle="Manage installment schedules" onAdd={openAdd} addLabel="New Installment" />
+      <PageHeader 
+        title="Installment Plans" 
+        subtitle="Manage installment schedules" 
+        onAdd={openAdd} 
+        addLabel="Generate Schedule" 
+      />
+
       <div className="card">
         {loading ? <Spinner /> : items.length === 0 ? <Empty /> : (
           <div className="table-wrap">
             <table>
-              <thead><tr><th>booking</th><th>installment_number</th><th>due_date</th><th>amount</th><th>paid_amount</th><th>due_amount</th><th>is_paid</th><th>Actions</th></tr></thead>
+              <thead>
+                <tr>
+                  <th>Booking</th>
+                  <th>Inst. No</th>
+                  <th>Due Date</th>
+                  <th>Amount</th>
+                  <th>Paid</th>
+                  <th>Due</th>
+                  <th>Status</th>
+                  <th>Actions</th>
+                </tr>
+              </thead>
               <tbody>{items.map(item => (
                 <tr key={item.id}>
-                  <td>{item.booking ?? '—'}</td><td>{item.installment_number ?? '—'}</td><td>{fmt.date(item.due_date)}</td><td>{fmt.currency(item.amount)}</td><td>{item.paid_amount ?? '—'}</td><td>{item.due_amount ?? '—'}</td><td><Badge status={item.is_paid ? 'active' : 'cancelled'} /></td>
                   <td>
-                    <div style={{ display:'flex', gap:6 }}>
-                      <button onClick={() => openView(item)} style={{ background:'#e0f2fe', color:'#0369a1', border:'none', padding:'4px 8px', borderRadius:6, cursor:'pointer' }}><FiEye size={13}/></button>
-                      <button onClick={() => openEdit(item)} style={{ background:'#fef9c3', color:'#92400e', border:'none', padding:'4px 8px', borderRadius:6, cursor:'pointer' }}><FiEdit2 size={13}/></button>
-                      <button onClick={() => remove(item.id)} className="btn-danger" style={{ padding:'4px 8px' }}><FiTrash2 size={13}/></button>
+                    <strong>{item.booking_code}</strong><br/>
+                    <small className="text-muted">{item.customer_name}</small>
+                  </td>
+                  <td>#{item.installment_number}</td>
+                  <td>{fmt.date(item.due_date)}</td>
+                  <td>{fmt.currency(item.amount)}</td>
+                  <td>{fmt.currency(item.paid_amount)}</td>
+                  <td style={{ color: Number(item.due_amount) > 0 ? '#ef4444' : '#10b981' }}>
+                    {fmt.currency(item.due_amount)}
+                  </td>
+                  <td>
+                    <Badge status={item.is_paid ? 'active' : 'cancelled'} label={item.is_paid ? 'Paid' : 'Unpaid'} />
+                  </td>
+                  <td>
+                    <div style={{ display: 'flex', gap: 6 }}>
+                      <button onClick={() => openView(item)} className="btn-icon" style={{ background:'#e0f2fe', color:'#0369a1' }}><FiEye size={13}/></button>
+                      <button onClick={() => openEdit(item)} className="btn-icon" style={{ background:'#fef9c3', color:'#92400e' }}><FiEdit2 size={13}/></button>
+                      <button onClick={() => remove(item.id)} className="btn-icon btn-danger"><FiTrash2 size={13}/></button>
                     </div>
                   </td>
                 </tr>
@@ -65,31 +145,52 @@ export default function Page() {
           </div>
         )}
       </div>
-      {(modal === 'add' || modal === 'edit') && (
-        <Modal title={modal === 'add' ? 'New Installment Plans' : 'Edit Installment Plans'} onClose={() => setModal(null)} size="lg">
+
+      {/* CREATE / GENERATE MODAL */}
+      {modal === 'add' && (
+        <Modal title="Generate New Schedule" onClose={() => setModal(null)} size="md">
           <div className="modal-body">
-            <div className="form-grid">
-              <div><label className="label">Booking ID *</label><input className="input" type="number" value={form.booking||''} onChange={f('booking')} /></div>
-              <div><label className="label">Installment No *</label><input className="input" type="number" value={form.installment_number||''} onChange={f('installment_number')} /></div>
-              <div><label className="label">Due Date *</label><input className="input" type="date" value={form.due_date||''} onChange={f('due_date')} /></div>
-              <div><label className="label">Amount *</label><input className="input" type="number" value={form.amount||''} onChange={f('amount')} /></div>
-              <div><label className="label">Paid Amount</label><input className="input" type="number" value={form.paid_amount||''} onChange={f('paid_amount')} /></div>
-              <div><label className="label">Paid Date</label><input className="input" type="date" value={form.paid_date||''} onChange={f('paid_date')} /></div>
-              <div className="full"><label className="label">Notes</label><textarea className="input" rows={2} value={form.notes||''} onChange={f('notes')} /></div>
+            <div className="form-grid" style={{ gridTemplateColumns: '1fr' }}>
+              <div><label className="label">Booking ID *</label><input className="input" type="number" value={form.booking_id} onChange={f('booking_id')} /></div>
+              <div><label className="label">Total Installments *</label><input className="input" type="number" value={form.number_of_installments} onChange={f('number_of_installments')} /></div>
+              <div><label className="label">Starting Date *</label><input className="input" type="date" value={form.start_date} onChange={f('start_date')} /></div>
             </div>
           </div>
           <div className="modal-footer">
             <button className="btn-secondary" onClick={() => setModal(null)}>Cancel</button>
-            <button className="btn-primary" onClick={save} disabled={saving}>{saving ? 'Saving...' : 'Save'}</button>
+            <button className="btn-primary" onClick={save} disabled={saving}>{saving ? 'Generating...' : 'Generate'}</button>
           </div>
         </Modal>
       )}
+
+      {/* EDIT MODAL */}
+      {modal === 'edit' && selected && (
+        <Modal title={`Update Payment: ${selected.booking_code}`} onClose={() => setModal(null)} size="md">
+          <div className="modal-body">
+            <div className="form-grid" style={{ gridTemplateColumns: '1fr' }}>
+              <div><label className="label">Paid Amount</label><input className="input" type="number" value={form.paid_amount} onChange={f('paid_amount')} /></div>
+              <div><label className="label">Notes</label><textarea className="input" rows={2} value={form.notes} onChange={f('notes')} /></div>
+            </div>
+          </div>
+          <div className="modal-footer">
+            <button className="btn-secondary" onClick={() => setModal(null)}>Cancel</button>
+            <button className="btn-primary" onClick={save} disabled={saving}>{saving ? 'Saving...' : 'Update'}</button>
+          </div>
+        </Modal>
+      )}
+
+      {/* VIEW MODAL */}
       {modal === 'view' && selected && (
-        <Modal title="Installment Plans Details" onClose={() => setModal(null)} size="lg">
+        <Modal title="Installment Plan Details" onClose={() => setModal(null)} size="lg">
           <div className="modal-body">
             <div className="form-grid">
               {Object.entries(selected).filter(([k]) => !['created_at','updated_at'].includes(k)).map(([k,v]) => (
-                <div key={k}><div className="label">{k.replace(/_/g,' ')}</div><div style={{ fontSize:14, fontWeight:500 }}>{String(v) || '—'}</div></div>
+                <div key={k}>
+                  <div className="label">{k.replace(/_/g,' ')}</div>
+                  <div style={{ fontSize:14, fontWeight:500 }}>
+                    {k.includes('amount') ? fmt.currency(v as any) : String(v) || '—'}
+                  </div>
+                </div>
               ))}
             </div>
           </div>
