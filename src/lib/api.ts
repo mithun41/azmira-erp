@@ -1,10 +1,10 @@
-import axios, { AxiosError } from "axios";
+import axios, { AxiosError, InternalAxiosRequestConfig } from "axios";
 
 const BASE_URL =
   process.env.NEXT_PUBLIC_API_URL?.replace(/\/+$/, "") ||
   "http://localhost:8000";
 
-// axios instance
+// ১. axios instance
 export const api = axios.create({
   baseURL: BASE_URL,
   headers: {
@@ -12,25 +12,24 @@ export const api = axios.create({
   },
 });
 
-// attach token automatically
-api.interceptors.request.use((config) => {
-  const token = localStorage.getItem("erp-token")
-
-  if (token) {
-    config.headers.Authorization = `Bearer ${token}`
+// ২. attach token automatically
+api.interceptors.request.use((config: InternalAxiosRequestConfig) => {
+  if (typeof window !== "undefined") {
+    const token = localStorage.getItem("erp-token");
+    if (token && config.headers) {
+      config.headers.Authorization = `Bearer ${token}`;
+    }
   }
 
-  // ❗️ CRITICAL FIX
+  // ❗️ FormData হ্যান্ডেল করার জন্য ডাইনামিক কন্টেন্ট টাইপ
   if (config.data instanceof FormData) {
-    config.headers["Content-Type"] = "multipart/form-data"
-  } else {
-    config.headers["Content-Type"] = "application/json"
+    config.headers["Content-Type"] = "multipart/form-data";
   }
 
-  return config
-})
+  return config;
+});
 
-// global error handler (very useful)
+// ৩. global error handler
 api.interceptors.response.use(
   (res) => res,
   (error: AxiosError) => {
@@ -38,6 +37,7 @@ api.interceptors.response.use(
       if (error.response?.status === 401) {
         localStorage.removeItem("erp-token");
         localStorage.removeItem("erp-user");
+        // বিল্ড এরর এড়াতে window.location ব্যবহার করা হয়েছে
         window.location.href = "/login";
       }
     }
@@ -255,9 +255,10 @@ export const ENDPOINTS = {
 
   // System Logs
   systemLogs: {
-    list: () => `/erp-system-logs/`,
-    create: () => `/erp-system-logs/new/`,
-  },
+  list: () => `/erp-system-logs/`,
+  create: () => `/erp-system-logs/new/`,
+  detail: (id: number) => `/erp-system-logs/${id}/`,
+},
 };
 
 // =====================================================
@@ -270,21 +271,17 @@ export const fetchList = (url: string, params?: object) =>
 export const fetchDetail = (url: string) =>
   api.get(url);
 
+// create এবং update এ 'multipart/form-data' ফিক্সড না রেখে ডাইনামিক রাখা ভালো
 export const createItem = (url: string, data: any) => {
-  return api.post(url, data, {
-    headers: {
-      "Content-Type": "multipart/form-data",
-    },
-  })
+  return api.post(url, data);
 }
 
 export const updateItem = (url: string, data: any) => {
-  return api.patch(url, data, {
-    headers: {
-      "Content-Type": "multipart/form-data",
-    },
-  })
+  return api.patch(url, data);
 }
 
 export const deleteItem = (url: string) =>
   api.delete(url);
+
+// ৬. ❗️ CRITICAL: Default export যোগ করা হয়েছে যাতে অন্য ফাইলে এরর না দেয়
+export default api;

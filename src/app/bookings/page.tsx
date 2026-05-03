@@ -31,19 +31,20 @@ const EMPTY = {
 }
 
 export default function Page() {
-  const [items, setItems] = useState([])
+  // ১. স্টেটগুলোতে টাইপ ডিফাইন করা হয়েছে যাতে বিল্ড এরর না আসে
+  const [items, setItems] = useState<any[]>([])
   const [loading, setLoading] = useState(true)
-  const [modal, setModal] = useState(null)
-  const [form, setForm] = useState(EMPTY)
-  const [selected, setSelected] = useState(null)
+  const [modal, setModal] = useState<string | null>(null)
+  const [selected, setSelected] = useState<any | null>(null)
+  const [form, setForm] = useState<any>(EMPTY)
   const [saving, setSaving] = useState(false)
-  const [error, setError] = useState(null)
+  const [error, setError] = useState<any | null>(null)
 
-  // dropdown data
-  const [customers, setCustomers] = useState([])
-  const [plots, setPlots] = useState([])
-  const [projects, setProjects] = useState([])
-  const [officers, setOfficers] = useState([])
+  // ড্রপডাউন ডাটা
+  const [customers, setCustomers] = useState<any[]>([])
+  const [plots, setPlots] = useState<any[]>([])
+  const [projects, setProjects] = useState<any[]>([])
+  const [officers, setOfficers] = useState<any[]>([])
 
   const ep = ENDPOINTS.bookings
 
@@ -62,8 +63,9 @@ export default function Page() {
     fetchList(ENDPOINTS.officers.list()).then(r => setOfficers(r.data))
   }, [])
 
-  const f = (k) => (e) => {
-    setForm(p => ({ ...p, [k]: e.target.value }))
+  // ২. ইনপুট হ্যান্ডেলার ফাংশনে টাইপ দেওয়া হয়েছে
+  const f = (k: string) => (e: any) => {
+    setForm((p: any) => ({ ...p, [k]: e.target.value }))
   }
 
   const openAdd = () => {
@@ -72,13 +74,14 @@ export default function Page() {
     setModal('add')
   }
 
-  const openEdit = (item) => {
-    setSelected(item);
+  // ৩. ফাংশন প্যারামিটারে টাইপ (item: any) যোগ করা হয়েছে
+  const openEdit = (item: any) => {
+    setSelected(item)
 
-    const customerId = customers.find(c => c.full_name === item.customer)?.id;
-    const plotId = plots.find(p => p.plot_number === item.plot)?.id;
-    const projectId = projects.find(p => p.project_name === item.project)?.id;
-    const officerId = officers.find(o => o.user?.full_name === item.marketing_officer)?.id;
+    const customerId = customers.find(c => c.full_name === item.customer)?.id
+    const plotId = plots.find(p => p.plot_number === item.plot)?.id
+    const projectId = projects.find(p => p.project_name === item.project)?.id
+    const officerId = officers.find(o => o.user?.full_name === item.marketing_officer)?.id
 
     setForm({
       ...item,
@@ -86,16 +89,15 @@ export default function Page() {
       plot: plotId ? String(plotId) : '',
       project: projectId ? String(projectId) : '',
       marketing_officer: officerId ? String(officerId) : (item.marketing_officer_id ? String(item.marketing_officer_id) : ''),
-      // নতুন ফিল্ডগুলো ফর্ম স্টেটে নিশ্চিত করা
       down_payment_amount: item.down_payment_amount || 0,
       down_payment_date: item.down_payment_date || '',
-    });
+    })
 
-    setError(null);
-    setModal('edit');
-  };
+    setError(null)
+    setModal('edit')
+  }
 
-  const openView = (item) => {
+  const openView = (item: any) => {
     setSelected(item)
     setModal('view')
   }
@@ -115,7 +117,7 @@ export default function Page() {
         total_price: Number(form.total_price),
         discount_amount: Number(form.discount_amount),
         token_amount: Number(form.token_amount),
-        down_payment_amount: Number(form.down_payment_amount), // কনভার্সন অ্যাড করা হয়েছে
+        down_payment_amount: Number(form.down_payment_amount),
         final_price: Number(form.total_price) - Number(form.discount_amount)
       }
 
@@ -129,7 +131,7 @@ export default function Page() {
 
       setModal(null)
       load()
-    } catch (err) {
+    } catch (err: any) {
       setError(err?.response?.data || err.message)
       toast.error('Failed to save data')
     } finally {
@@ -137,7 +139,7 @@ export default function Page() {
     }
   }
 
-  const remove = async (id) => {
+  const remove = async (id: any) => {
     if (!confirm('Are you sure you want to delete this booking?')) return
     try {
       await deleteItem(ep.detail(id))
@@ -186,13 +188,13 @@ export default function Page() {
                   <tr key={item.id}>
                     <td><span style={{ fontWeight: 600 }}>{item.booking_code}</span></td>
                     <td>{item.customer_name || item.customer}</td>
-                    <td>{item.plot_name || item.plot}</td>
+                    <td>{item.plot_number || item.plot}</td>
                     <td>{item.project_name || item.project}</td>
                     <td>{item.booking_date || '—'}</td>
                     <td>{fmt.currency(item.final_price)}</td>
                     <td style={{ color: Number(item.total_due) > 0 ? '#dc2626' : '#16a34a', fontWeight: 500 }}>
-        {fmt.currency(item.total_due)}
-      </td>
+                      {fmt.currency(item.total_due)}
+                    </td>
                     <td><Badge status={item.status} /></td>
                     <td>
                       <div style={{ display: 'flex', gap: 6, justifyContent: 'flex-end' }}>
@@ -291,7 +293,6 @@ export default function Page() {
                 <input className="input" type="date" value={form.token_paid_date} onChange={f('token_paid_date')} />
               </div>
 
-              {/* 🔥 নতুন ফিল্ডগুলো এখানে যোগ করা হয়েছে */}
               <div>
                 <label className="label">Down Payment Amount</label>
                 <input className="input" type="number" value={form.down_payment_amount} onChange={f('down_payment_amount')} />
@@ -335,7 +336,7 @@ export default function Page() {
         <Modal title="Booking Detailed View" onClose={() => setModal(null)} size="lg">
           <div className="modal-body">
             <div className="form-grid">
-              {Object.entries(selected).map(([key, val]) => {
+              {Object.entries(selected).map(([key, val]: [string, any]) => {
                 if (['customer_id', 'plot_id', 'project_id', 'marketing_officer_id'].includes(key)) return null;
                 
                 return (

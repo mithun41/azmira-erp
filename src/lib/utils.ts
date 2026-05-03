@@ -3,10 +3,24 @@ import { clsx, type ClassValue } from 'clsx'
 export function cn(...inputs: ClassValue[]) { return clsx(inputs) }
 
 export const fmt = {
-  currency: (n: number | string) => `৳ ${Number(n).toLocaleString('en-BD')}`,
-  date: (d: string) => d ? new Date(d).toLocaleDateString('en-BD') : '—',
-  datetime: (d: string) => d ? new Date(d).toLocaleString('en-BD') : '—',
-  percent: (n: number) => `${n}%`,
+  currency: (n: number | string) => {
+  const num = Number(n)
+  return isNaN(num) ? '—' : `৳ ${num.toLocaleString('en-BD')}`
+},  
+  date: (d: string) => {
+  const date = new Date(d)
+  return d && !isNaN(date.getTime())
+    ? date.toLocaleDateString('en-BD')
+    : '—'
+},
+
+datetime: (d: string) => {
+  const date = new Date(d)
+  return d && !isNaN(date.getTime())
+    ? date.toLocaleString('en-BD')
+    : '—'
+},
+  percent: (n: number | string) => `${Number(n) || 0}%`
 }
 
 export const STATUS_COLORS: Record<string, string> = {
@@ -25,6 +39,14 @@ export const STATUS_COLORS: Record<string, string> = {
   generated: 'bg-cyan-100 text-cyan-700',
   default: 'bg-gray-100 text-gray-600',
 }
+export const formatCurrency = fmt.currency;
+export const formatDate = fmt.date;
+export const truncate = (str: string, len = 20) =>
+  str?.length > len ? str.slice(0, len) + "..." : str;
 
-export const badge = (status: string) =>
-  `inline-flex items-center px-2 py-0.5 rounded text-xs font-medium ${STATUS_COLORS[status] || STATUS_COLORS.default}`
+export const badge = (status: string) => {
+  const key = status?.toLowerCase?.() || 'default'
+  return `inline-flex items-center px-2 py-0.5 rounded text-xs font-medium ${
+    STATUS_COLORS[key] || STATUS_COLORS.default
+  }`
+}

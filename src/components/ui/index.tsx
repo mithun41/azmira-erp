@@ -1,7 +1,7 @@
 "use client";
 import { ReactNode } from "react";
 import { MdClose, MdAdd, MdEdit, MdDelete } from "react-icons/md";
-import { cn, statusColor } from "@/lib/utils";
+import { cn, STATUS_COLORS } from "@/lib/utils";
 
 // ─── Modal ────────────────────────────────────────────────────────────────────
 interface ModalProps {
@@ -82,7 +82,7 @@ export function StatCard({ label, value, icon, color = "bg-primary-50 text-prima
 // ─── Badge ────────────────────────────────────────────────────────────────────
 export function Badge({ status }: { status: string }) {
   return (
-    <span className={cn("badge", statusColor(status))}>
+    <span className={cn("badge", STATUS_COLORS[status] || STATUS_COLORS.default)}>
       {status?.replace(/_/g, " ")}
     </span>
   );

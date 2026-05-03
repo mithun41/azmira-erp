@@ -7,7 +7,7 @@ import Badge from '@/components/ui/Badge'
 import Spinner from '@/components/ui/Spinner'
 import Empty from '@/components/ui/Empty'
 import toast from 'react-hot-toast'
-import { fetchList, createItem, updateItem, deleteItem, ENDPOINTS } from '@/lib/api'
+import { ENDPOINTS, fetchList, createItem, updateItem, deleteItem } from '@/lib/api'
 import { fmt } from '@/lib/utils'
 import { FiEdit2, FiTrash2, FiEye } from 'react-icons/fi'
 

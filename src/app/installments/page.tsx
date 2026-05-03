@@ -130,8 +130,11 @@ export default function Page() {
                     {fmt.currency(item.due_amount)}
                   </td>
                   <td>
-                    <Badge status={item.is_paid ? 'active' : 'cancelled'} label={item.is_paid ? 'Paid' : 'Unpaid'} />
-                  </td>
+  <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+    <Badge status={item.is_paid ? "active" : "cancelled"} />
+    <span>{item.is_paid ? "Paid" : "Unpaid"}</span>
+  </div>
+</td>
                   <td>
                     <div style={{ display: 'flex', gap: 6 }}>
                       <button onClick={() => openView(item)} className="btn-icon" style={{ background:'#e0f2fe', color:'#0369a1' }}><FiEye size={13}/></button>

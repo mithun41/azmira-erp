@@ -5,3 +5,4 @@ node_modules
 *.log       
 # Ignore the .env.local file which contains sensitive information
 .env.local
+.vercel
