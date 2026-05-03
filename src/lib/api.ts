@@ -106,9 +106,11 @@ export const ENDPOINTS = {
 
   // Installments
   installments: {
-    list: () => `/installments/`,
+    list: () => `/erp-installments/`,
     create: () => `/erp-installments/new/`,
-    detail: (id: number) => `/installments/${id}/`,
+    detail: (id: number) => `/erp-installments/${id}/`,
+    byBooking: (booking_code: string) =>
+    `/erp-installments/${booking_code}/`,
   },
 
   // Receipts

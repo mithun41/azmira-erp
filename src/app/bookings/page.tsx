@@ -31,20 +31,21 @@ const EMPTY = {
 }
 
 export default function Page() {
-  // ১. স্টেটগুলোতে টাইপ ডিফাইন করা হয়েছে যাতে বিল্ড এরর না আসে
   const [items, setItems] = useState<any[]>([])
   const [loading, setLoading] = useState(true)
-  const [modal, setModal] = useState<string | null>(null)
+  const [modal, setModal] = useState<'add' | 'edit' | 'view' | 'installments' | null>(null)
   const [selected, setSelected] = useState<any | null>(null)
   const [form, setForm] = useState<any>(EMPTY)
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState<any | null>(null)
 
-  // ড্রপডাউন ডাটা
   const [customers, setCustomers] = useState<any[]>([])
   const [plots, setPlots] = useState<any[]>([])
   const [projects, setProjects] = useState<any[]>([])
   const [officers, setOfficers] = useState<any[]>([])
+
+  // ✅ নতুন: installments state
+  const [installments, setInstallments] = useState<any[]>([])
 
   const ep = ENDPOINTS.bookings
 
@@ -63,7 +64,6 @@ export default function Page() {
     fetchList(ENDPOINTS.officers.list()).then(r => setOfficers(r.data))
   }, [])
 
-  // ২. ইনপুট হ্যান্ডেলার ফাংশনে টাইপ দেওয়া হয়েছে
   const f = (k: string) => (e: any) => {
     setForm((p: any) => ({ ...p, [k]: e.target.value }))
   }
@@ -74,10 +74,8 @@ export default function Page() {
     setModal('add')
   }
 
-  // ৩. ফাংশন প্যারামিটারে টাইপ (item: any) যোগ করা হয়েছে
   const openEdit = (item: any) => {
     setSelected(item)
-
     const customerId = customers.find(c => c.full_name === item.customer)?.id
     const plotId = plots.find(p => p.plot_number === item.plot)?.id
     const projectId = projects.find(p => p.project_name === item.project)?.id
@@ -102,10 +100,22 @@ export default function Page() {
     setModal('view')
   }
 
+  // ✅ নতুন: installments open
+  const openInstallments = async (booking: any) => {
+    setSelected(booking)
+    setInstallments([])
+    setModal('installments')
+    try {
+      const res = await fetchList(ENDPOINTS.installments.byBooking(booking.booking_code))
+      setInstallments(res.data || [])
+    } catch {
+      toast.error('Installments load failed')
+    }
+  }
+
   const save = async () => {
     setSaving(true)
     setError(null)
-
     try {
       const payload = {
         ...form,
@@ -152,11 +162,11 @@ export default function Page() {
 
   return (
     <AppShell>
-      <PageHeader 
-        title="Bookings" 
-        subtitle="Manage property bookings and payments" 
-        onAdd={openAdd} 
-        addLabel="New Booking" 
+      <PageHeader
+        title="Bookings"
+        subtitle="Manage property bookings and payments"
+        onAdd={openAdd}
+        addLabel="New Booking"
       />
 
       {error && (
@@ -206,6 +216,11 @@ export default function Page() {
                           style={{ background: '#fef9c3', color: '#92400e', border: 'none', padding: '6px', borderRadius: 6, cursor: 'pointer' }}>
                           <FiEdit2 size={14} />
                         </button>
+                        {/* ✅ নতুন: Installments বাটন */}
+                        <button onClick={() => openInstallments(item)} title="Installments"
+                          style={{ background: '#d1fae5', color: '#065f46', border: 'none', padding: '6px 10px', borderRadius: 6, cursor: 'pointer', fontSize: 12, fontWeight: 600 }}>
+                          Install.
+                        </button>
                         <button onClick={() => remove(item.id)} title="Delete"
                           style={{ background: '#fee2e2', color: '#991b1b', border: 'none', padding: '6px', borderRadius: 6, cursor: 'pointer' }}>
                           <FiTrash2 size={14} />
@@ -220,7 +235,7 @@ export default function Page() {
         )}
       </div>
 
-      {/* ================= ADD / EDIT MODAL ================= */}
+      {/* ADD / EDIT MODAL — হুবহু আগেরটা */}
       {(modal === 'add' || modal === 'edit') && (
         <Modal title={modal === 'add' ? 'Create New Booking' : 'Edit Booking'} onClose={() => setModal(null)} size="lg">
           <div className="modal-body">
@@ -229,37 +244,27 @@ export default function Page() {
                 <label className="label">Booking Code</label>
                 <input className="input" value={form.booking_code} onChange={f('booking_code')} />
               </div>
-
               <div>
                 <label className="label">Customer</label>
                 <select className="input" value={form.customer} onChange={f('customer')}>
                   <option value="">Select Customer</option>
-                  {customers.map(c => (
-                    <option key={c.id} value={String(c.id)}>{c.full_name}</option>
-                  ))}
+                  {customers.map(c => <option key={c.id} value={String(c.id)}>{c.full_name}</option>)}
                 </select>
               </div>
-
               <div>
                 <label className="label">Plot</label>
                 <select className="input" value={form.plot} onChange={f('plot')}>
                   <option value="">Select Plot</option>
-                  {plots.map(p => (
-                    <option key={p.id} value={String(p.id)}>{p.plot_number}</option>
-                  ))}
+                  {plots.map(p => <option key={p.id} value={String(p.id)}>{p.plot_number}</option>)}
                 </select>
               </div>
-
               <div>
                 <label className="label">Project</label>
                 <select className="input" value={form.project} onChange={f('project')}>
                   <option value="">Select Project</option>
-                  {projects.map(p => (
-                    <option key={p.id} value={String(p.id)}>{p.project_name}</option>
-                  ))}
+                  {projects.map(p => <option key={p.id} value={String(p.id)}>{p.project_name}</option>)}
                 </select>
               </div>
-
               <div>
                 <label className="label">Marketing Officer</label>
                 <select className="input" value={form.marketing_officer} onChange={f('marketing_officer')}>
@@ -267,42 +272,34 @@ export default function Page() {
                   {officers.map(o => <option key={o.id} value={String(o.id)}>{o.user?.full_name || o.id}</option>)}
                 </select>
               </div>
-
               <div>
                 <label className="label">Booking Date</label>
                 <input className="input" type="date" value={form.booking_date} onChange={f('booking_date')} />
               </div>
-
               <div>
                 <label className="label">Total Price</label>
                 <input className="input" type="number" value={form.total_price} onChange={f('total_price')} />
               </div>
-
               <div>
                 <label className="label">Discount Amount</label>
                 <input className="input" type="number" value={form.discount_amount} onChange={f('discount_amount')} />
               </div>
-
               <div>
                 <label className="label">Token Amount</label>
                 <input className="input" type="number" value={form.token_amount} onChange={f('token_amount')} />
               </div>
-
               <div>
                 <label className="label">Token Paid Date</label>
                 <input className="input" type="date" value={form.token_paid_date} onChange={f('token_paid_date')} />
               </div>
-
               <div>
                 <label className="label">Down Payment Amount</label>
                 <input className="input" type="number" value={form.down_payment_amount} onChange={f('down_payment_amount')} />
               </div>
-
               <div>
                 <label className="label">Down Payment Date</label>
                 <input className="input" type="date" value={form.down_payment_date} onChange={f('down_payment_date')} />
               </div>
-
               <div>
                 <label className="label">Status</label>
                 <select className="input" value={form.status} onChange={f('status')}>
@@ -314,14 +311,12 @@ export default function Page() {
                   <option value="transferred">Transferred</option>
                 </select>
               </div>
-
               <div className="full">
                 <label className="label">Notes</label>
                 <textarea className="input" rows={2} value={form.notes} onChange={f('notes')} />
               </div>
             </div>
           </div>
-
           <div className="modal-footer">
             <button className="btn-secondary" onClick={() => setModal(null)}>Cancel</button>
             <button className="btn-primary" onClick={save} disabled={saving}>
@@ -331,14 +326,13 @@ export default function Page() {
         </Modal>
       )}
 
-      {/* ================= VIEW DETAILS MODAL ================= */}
+      {/* VIEW MODAL — হুবহু আগেরটা */}
       {modal === 'view' && selected && (
         <Modal title="Booking Detailed View" onClose={() => setModal(null)} size="lg">
           <div className="modal-body">
             <div className="form-grid">
               {Object.entries(selected).map(([key, val]: [string, any]) => {
-                if (['customer_id', 'plot_id', 'project_id', 'marketing_officer_id'].includes(key)) return null;
-                
+                if (['customer_id', 'plot_id', 'project_id', 'marketing_officer_id'].includes(key)) return null
                 return (
                   <div key={key} style={{ borderBottom: '1px solid #f3f4f6', paddingBottom: 8 }}>
                     <div className="label" style={{ textTransform: 'capitalize', color: '#6b7280' }}>
@@ -358,6 +352,125 @@ export default function Page() {
         </Modal>
       )}
 
+      {/* ✅ নতুন: INSTALLMENTS MODAL */}
+           {/* INSTALLMENTS MODAL */}
+     {modal === 'installments' && (
+  <Modal
+    title={`Installments - ${selected?.booking_code}`}
+    onClose={() => setModal(null)}
+    size="lg"
+  >
+    <div className="modal-body">
+
+      {installments.length === 0 ? (
+        <Empty />
+      ) : (
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+
+          {installments.map((ins: any) => (
+            <div
+              key={ins.id}
+              style={{
+                border: '1px solid #e5e7eb',
+                borderRadius: 10,
+                padding: 14,
+                background: ins.is_paid ? '#ecfdf5' : '#fff7ed'
+              }}
+            >
+
+              {/* Top row */}
+              <div style={{
+                display: 'flex',
+                justifyContent: 'space-between',
+                alignItems: 'center'
+              }}>
+                <div>
+                  <div style={{ fontWeight: 600 }}>
+                    Installment #{ins.installment_number}
+                  </div>
+                  <div style={{ fontSize: 12, color: '#6b7280' }}>
+                    Due Date: {ins.due_date}
+                  </div>
+                </div>
+
+                <span style={{
+                  padding: '4px 10px',
+                  borderRadius: 20,
+                  fontSize: 12,
+                  fontWeight: 600,
+                  background: ins.is_paid ? '#16a34a' : '#f97316',
+                  color: '#fff'
+                }}>
+                  {ins.is_paid ? 'PAID' : 'DUE'}
+                </span>
+              </div>
+
+              {/* Amount row */}
+              <div style={{
+                display: 'grid',
+                gridTemplateColumns: '1fr 1fr 1fr',
+                marginTop: 10,
+                gap: 10,
+                fontSize: 13
+              }}>
+                <div>
+                  <div style={{ color: '#6b7280' }}>Total Amount</div>
+                  <div style={{ fontWeight: 600 }}>৳ {ins.amount}</div>
+                </div>
+
+                <div>
+                  <div style={{ color: '#6b7280' }}>Paid</div>
+                  <div style={{ fontWeight: 600, color: '#16a34a' }}>
+                    ৳ {ins.paid_amount}
+                  </div>
+                </div>
+
+                <div>
+                  <div style={{ color: '#6b7280' }}>Due</div>
+                  <div style={{ fontWeight: 600, color: '#dc2626' }}>
+                    ৳ {ins.due_amount}
+                  </div>
+                </div>
+              </div>
+
+              {/* Footer info */}
+              <div style={{
+                marginTop: 10,
+                fontSize: 12,
+                color: '#6b7280',
+                display: 'flex',
+                justifyContent: 'space-between'
+              }}>
+                <span>Customer: {ins.customer_name}</span>
+                <span>Booking: {ins.booking_code}</span>
+              </div>
+
+              {/* ✅ NEW: Paid Date */}
+              {ins.is_paid && (
+                <div style={{
+                  marginTop: 6,
+                  fontSize: 12,
+                  color: '#374151'
+                }}>
+                  Paid Date: {ins.updated_at ? new Date(ins.updated_at).toLocaleString() : '—'}
+                </div>
+              )}
+
+            </div>
+          ))}
+
+        </div>
+      )}
+
+    </div>
+
+    <div className="modal-footer">
+      <button className="btn-primary" onClick={() => setModal(null)}>
+        Close
+      </button>
+    </div>
+  </Modal>
+)}
     </AppShell>
   )
 }
