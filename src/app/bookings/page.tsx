@@ -7,9 +7,10 @@ import Badge from '@/components/ui/Badge'
 import Spinner from '@/components/ui/Spinner'
 import Empty from '@/components/ui/Empty'
 import toast from 'react-hot-toast'
-import { fetchList, createItem, updateItem, deleteItem, ENDPOINTS } from '@/lib/api'
+import { fetchList, createItem, updateItem, deleteItem, ENDPOINTS, api } from '@/lib/api'
 import { fmt } from '@/lib/utils'
-import { FiEdit2, FiTrash2, FiEye } from 'react-icons/fi'
+import { FiEdit2, FiTrash2, FiEye, FiDownload, FiList } from 'react-icons/fi'
+import { generateReceiptPDF } from '@/lib/receipt'
 
 const EMPTY = {
   booking_code: '',
@@ -27,25 +28,32 @@ const EMPTY = {
   down_payment_amount: 0,
   down_payment_date: '',
   status: 'pending',
-  notes: ''
+  notes: '',
 }
 
-export default function Page() {
-  const [items, setItems] = useState<any[]>([])
-  const [loading, setLoading] = useState(true)
-  const [modal, setModal] = useState<'add' | 'edit' | 'view' | 'installments' | null>(null)
-  const [selected, setSelected] = useState<any | null>(null)
-  const [form, setForm] = useState<any>(EMPTY)
-  const [saving, setSaving] = useState(false)
-  const [error, setError] = useState<any | null>(null)
+export default function BookingsPage() {
+  const [items, setItems]           = useState<any[]>([])
+  const [loading, setLoading]       = useState(true)
+  const [modal, setModal]           = useState<'add' | 'edit' | 'view' | 'installments' | 'receipt_list' | null>(null)
+  const [selected, setSelected]     = useState<any | null>(null)
+  const [form, setForm]             = useState<any>(EMPTY)
+  const [saving, setSaving]         = useState(false)
+  const [error, setError]           = useState<any | null>(null)
+  const [receiptLoading, setReceiptLoading] = useState<number | null>(null)
 
-  const [customers, setCustomers] = useState<any[]>([])
-  const [plots, setPlots] = useState<any[]>([])
-  const [projects, setProjects] = useState<any[]>([])
-  const [officers, setOfficers] = useState<any[]>([])
+  // dropdown data
+  const [customers, setCustomers]   = useState<any[]>([])
+  const [plots, setPlots]           = useState<any[]>([])
+  const [projects, setProjects]     = useState<any[]>([])
+  const [officers, setOfficers]     = useState<any[]>([])
 
-  // ✅ নতুন: installments state
+  // installments
   const [installments, setInstallments] = useState<any[]>([])
+  const [installLoading, setInstallLoading] = useState(false)
+
+  // receipts list for a booking
+  const [receiptList, setReceiptList] = useState<any[]>([])
+  const [receiptListLoading, setReceiptListLoading] = useState(false)
 
   const ep = ENDPOINTS.bookings
 
@@ -64,102 +72,164 @@ export default function Page() {
     fetchList(ENDPOINTS.officers.list()).then(r => setOfficers(r.data))
   }, [])
 
-  const f = (k: string) => (e: any) => {
+  const f = (k: string) => (e: any) =>
     setForm((p: any) => ({ ...p, [k]: e.target.value }))
-  }
 
-  const openAdd = () => {
-    setForm(EMPTY)
-    setError(null)
-    setModal('add')
-  }
+  const openAdd = () => { setForm(EMPTY); setError(null); setModal('add') }
 
   const openEdit = (item: any) => {
     setSelected(item)
     const customerId = customers.find(c => c.full_name === item.customer)?.id
-    const plotId = plots.find(p => p.plot_number === item.plot)?.id
-    const projectId = projects.find(p => p.project_name === item.project)?.id
-    const officerId = officers.find(o => o.user?.full_name === item.marketing_officer)?.id
-
+    const plotId     = plots.find(p => p.plot_number === item.plot)?.id
+    const projectId  = projects.find(p => p.project_name === item.project)?.id
+    const officerId  = officers.find(o => o.user?.full_name === item.marketing_officer)?.id
     setForm({
       ...item,
-      customer: customerId ? String(customerId) : '',
-      plot: plotId ? String(plotId) : '',
-      project: projectId ? String(projectId) : '',
-      marketing_officer: officerId ? String(officerId) : (item.marketing_officer_id ? String(item.marketing_officer_id) : ''),
+      customer:           customerId ? String(customerId) : '',
+      plot:               plotId     ? String(plotId)     : '',
+      project:            projectId  ? String(projectId)  : '',
+      marketing_officer:  officerId  ? String(officerId)  : (item.marketing_officer_id ? String(item.marketing_officer_id) : ''),
       down_payment_amount: item.down_payment_amount || 0,
-      down_payment_date: item.down_payment_date || '',
+      down_payment_date:   item.down_payment_date   || '',
     })
-
     setError(null)
     setModal('edit')
   }
 
-  const openView = (item: any) => {
-    setSelected(item)
-    setModal('view')
-  }
+  const openView = (item: any) => { setSelected(item); setModal('view') }
 
-  // ✅ নতুন: installments open
+  // ── Installments modal ─────────────────────────────────────
   const openInstallments = async (booking: any) => {
     setSelected(booking)
     setInstallments([])
     setModal('installments')
+    setInstallLoading(true)
     try {
-      const res = await fetchList(ENDPOINTS.installments.byBooking(booking.booking_code))
+      const res = await fetchList(`${ENDPOINTS.installments.list()}?booking=${booking.id}`)
       setInstallments(res.data || [])
     } catch {
-      toast.error('Installments load failed')
+      toast.error('Could not load installments')
+    } finally {
+      setInstallLoading(false)
     }
   }
 
+  // ── Receipts list modal ────────────────────────────────────
+  const openReceiptList = async (booking: any) => {
+    setSelected(booking)
+    setReceiptList([])
+    setModal('receipt_list')
+    setReceiptListLoading(true)
+    try {
+      const res = await fetchList(`${ENDPOINTS.receipts.list()}?booking=${booking.id}`)
+      setReceiptList(res.data || [])
+    } catch {
+      toast.error('Could not load receipts')
+    } finally {
+      setReceiptListLoading(false)
+    }
+  }
+
+  // ── Save booking ───────────────────────────────────────────
   const save = async () => {
     setSaving(true)
     setError(null)
     try {
       const payload = {
         ...form,
-        customer: Number(form.customer),
-        plot: Number(form.plot),
-        project: Number(form.project),
-        marketing_officer: form.marketing_officer ? Number(form.marketing_officer) : null,
-        transferred_to: form.transferred_to ? Number(form.transferred_to) : null,
-        total_price: Number(form.total_price),
-        discount_amount: Number(form.discount_amount),
-        token_amount: Number(form.token_amount),
+        customer:           Number(form.customer),
+        plot:               Number(form.plot),
+        project:            Number(form.project),
+        marketing_officer:  form.marketing_officer  ? Number(form.marketing_officer)  : null,
+        transferred_to:     form.transferred_to     ? Number(form.transferred_to)     : null,
+        total_price:        Number(form.total_price),
+        discount_amount:    Number(form.discount_amount),
+        token_amount:       Number(form.token_amount),
         down_payment_amount: Number(form.down_payment_amount),
-        final_price: Number(form.total_price) - Number(form.discount_amount)
+        final_price:        Number(form.total_price) - Number(form.discount_amount),
       }
-
       if (modal === 'add') {
         await createItem(ep.create(), payload)
-        toast.success('Created Successfully')
+        toast.success('Booking created')
       } else {
         await updateItem(ep.detail(selected.id), payload)
-        toast.success('Updated Successfully')
+        toast.success('Booking updated')
       }
-
-      setModal(null)
-      load()
+      setModal(null); load()
     } catch (err: any) {
       setError(err?.response?.data || err.message)
-      toast.error('Failed to save data')
+      toast.error('Failed to save')
     } finally {
       setSaving(false)
     }
   }
 
   const remove = async (id: any) => {
-    if (!confirm('Are you sure you want to delete this booking?')) return
+    if (!confirm('Delete this booking?')) return
+    try { await deleteItem(ep.detail(id)); toast.success('Deleted'); load() }
+    catch { toast.error('Failed to delete') }
+  }
+
+  // ── Download receipt PDF ───────────────────────────────────
+  const handleDownloadReceipt = async (booking: any, receiptOverride?: any) => {
+    setReceiptLoading(booking.id)
     try {
-      await deleteItem(ep.detail(id))
-      toast.success('Deleted')
-      load()
-    } catch {
-      toast.error('Failed to delete')
+      // 1. Get receipt — use override (from receipt_list modal) or fetch latest
+      let receipt = receiptOverride
+      if (!receipt) {
+        const receiptRes = await fetchList(`${ENDPOINTS.receipts.list()}?booking=${booking.id}`)
+        const list = receiptRes.data || []
+        if (list.length === 0) { toast.error('No receipt found for this booking'); return }
+        // use latest authorized receipt, else latest
+        receipt = list.find((r: any) => r.status === 'authorized') || list[list.length - 1]
+      }
+
+      // 2. Full booking data
+      const bookingRes = await api.get(ep.detail(booking.id))
+      const fullBooking = bookingRes.data || booking
+
+      // 3. Plot details
+      let plot = null
+      const plotId = fullBooking.plot_id || (plots.find(p => p.plot_number === fullBooking.plot)?.id)
+      if (plotId) {
+        try { const pr = await api.get(ENDPOINTS.plots.detail(plotId)); plot = pr.data } catch {}
+      }
+      if (!plot) {
+        plot = plots.find(p => p.plot_number === fullBooking.plot) || null
+      }
+
+      // 4. Customer details
+      let customer = null
+      const custId = receipt?.customer || fullBooking.customer_id
+      if (custId) {
+        try { const cr = await api.get(ENDPOINTS.customers.detail(Number(custId))); customer = cr.data } catch {}
+      }
+      if (!customer) {
+        customer = customers.find(c => c.full_name === fullBooking.customer) || null
+      }
+
+      // 5. Installment linked to this receipt
+      let installment = null
+      if (receipt?.installment) {
+        try {
+          const ir = await api.get(ENDPOINTS.installments.detail(receipt.installment))
+          installment = ir.data
+        } catch {}
+      }
+
+      // 6. Generate PDF
+      generateReceiptPDF({ booking: fullBooking, receipt, plot, installment, customer })
+      toast.success('Receipt downloaded')
+
+    } catch (err) {
+      console.error(err)
+      toast.error('Receipt download failed')
+    } finally {
+      setReceiptLoading(null)
     }
   }
 
+  // ── JSX ────────────────────────────────────────────────────
   return (
     <AppShell>
       <PageHeader
@@ -171,8 +241,8 @@ export default function Page() {
 
       {error && (
         <div style={{ background: '#fee2e2', color: '#991b1b', padding: 12, marginBottom: 15, borderRadius: 8, fontSize: 13 }}>
-          <strong>Error Details:</strong>
-          <pre style={{ marginTop: 5, whiteSpace: 'pre-wrap' }}>{JSON.stringify(error, null, 2)}</pre>
+          <strong>Error:</strong>
+          <pre style={{ marginTop: 5, whiteSpace: 'pre-wrap', fontSize: 12 }}>{JSON.stringify(error, null, 2)}</pre>
         </div>
       )}
 
@@ -188,6 +258,7 @@ export default function Page() {
                   <th>Project</th>
                   <th>Date</th>
                   <th>Final Price</th>
+                  <th>Paid</th>
                   <th>Due</th>
                   <th>Status</th>
                   <th style={{ textAlign: 'right' }}>Actions</th>
@@ -196,34 +267,53 @@ export default function Page() {
               <tbody>
                 {items.map(item => (
                   <tr key={item.id}>
-                    <td><span style={{ fontWeight: 600 }}>{item.booking_code}</span></td>
+                    <td><span style={{ fontWeight: 600, color: '#0369a1' }}>{item.booking_code}</span></td>
                     <td>{item.customer_name || item.customer}</td>
                     <td>{item.plot_number || item.plot}</td>
                     <td>{item.project_name || item.project}</td>
-                    <td>{item.booking_date || '—'}</td>
-                    <td>{fmt.currency(item.final_price)}</td>
+                    <td>{fmt.date(item.booking_date)}</td>
+                    <td style={{ fontWeight: 600 }}>{fmt.currency(item.final_price)}</td>
+                    <td style={{ color: '#16a34a', fontWeight: 500 }}>{fmt.currency(item.total_paid)}</td>
                     <td style={{ color: Number(item.total_due) > 0 ? '#dc2626' : '#16a34a', fontWeight: 500 }}>
                       {fmt.currency(item.total_due)}
                     </td>
                     <td><Badge status={item.status} /></td>
                     <td>
-                      <div style={{ display: 'flex', gap: 6, justifyContent: 'flex-end' }}>
+                      <div style={{ display: 'flex', gap: 5, justifyContent: 'flex-end', flexWrap: 'wrap' }}>
+                        {/* View */}
                         <button onClick={() => openView(item)} title="View"
-                          style={{ background: '#e0f2fe', color: '#0369a1', border: 'none', padding: '6px', borderRadius: 6, cursor: 'pointer' }}>
-                          <FiEye size={14} />
+                          style={{ background: '#e0f2fe', color: '#0369a1', border: 'none', padding: '5px 7px', borderRadius: 6, cursor: 'pointer' }}>
+                          <FiEye size={13} />
                         </button>
+                        {/* Edit */}
                         <button onClick={() => openEdit(item)} title="Edit"
-                          style={{ background: '#fef9c3', color: '#92400e', border: 'none', padding: '6px', borderRadius: 6, cursor: 'pointer' }}>
-                          <FiEdit2 size={14} />
+                          style={{ background: '#fef9c3', color: '#92400e', border: 'none', padding: '5px 7px', borderRadius: 6, cursor: 'pointer' }}>
+                          <FiEdit2 size={13} />
                         </button>
-                        {/* ✅ নতুন: Installments বাটন */}
+                        {/* Installments */}
                         <button onClick={() => openInstallments(item)} title="Installments"
-                          style={{ background: '#d1fae5', color: '#065f46', border: 'none', padding: '6px 10px', borderRadius: 6, cursor: 'pointer', fontSize: 12, fontWeight: 600 }}>
-                          Install.
+                          style={{ background: '#d1fae5', color: '#065f46', border: 'none', padding: '5px 9px', borderRadius: 6, cursor: 'pointer', fontSize: 11, fontWeight: 600 }}>
+                          <FiList size={13} />
                         </button>
+                        {/* Receipts list */}
+                        <button onClick={() => openReceiptList(item)} title="Receipts"
+                          style={{ background: '#ede9fe', color: '#5b21b6', border: 'none', padding: '5px 9px', borderRadius: 6, cursor: 'pointer', fontSize: 11, fontWeight: 600 }}>
+                          Receipts
+                        </button>
+                        {/* Download latest receipt */}
+                        <button
+                          onClick={() => handleDownloadReceipt(item)}
+                          title="Download Receipt PDF"
+                          disabled={receiptLoading === item.id}
+                          style={{ background: '#fce7f3', color: '#9d174d', border: 'none', padding: '5px 7px', borderRadius: 6, cursor: 'pointer' }}>
+                          {receiptLoading === item.id
+                            ? <span style={{ fontSize: 11 }}>...</span>
+                            : <FiDownload size={13} />}
+                        </button>
+                        {/* Delete */}
                         <button onClick={() => remove(item.id)} title="Delete"
-                          style={{ background: '#fee2e2', color: '#991b1b', border: 'none', padding: '6px', borderRadius: 6, cursor: 'pointer' }}>
-                          <FiTrash2 size={14} />
+                          style={{ background: '#fee2e2', color: '#991b1b', border: 'none', padding: '5px 7px', borderRadius: 6, cursor: 'pointer' }}>
+                          <FiTrash2 size={13} />
                         </button>
                       </div>
                     </td>
@@ -235,31 +325,31 @@ export default function Page() {
         )}
       </div>
 
-      {/* ADD / EDIT MODAL — হুবহু আগেরটা */}
+      {/* ── ADD / EDIT MODAL ─────────────────────────────────── */}
       {(modal === 'add' || modal === 'edit') && (
-        <Modal title={modal === 'add' ? 'Create New Booking' : 'Edit Booking'} onClose={() => setModal(null)} size="lg">
+        <Modal title={modal === 'add' ? 'New Booking' : 'Edit Booking'} onClose={() => setModal(null)} size="lg">
           <div className="modal-body">
             <div className="form-grid">
               <div>
-                <label className="label">Booking Code</label>
+                <label className="label">Booking Code *</label>
                 <input className="input" value={form.booking_code} onChange={f('booking_code')} />
               </div>
               <div>
-                <label className="label">Customer</label>
+                <label className="label">Customer *</label>
                 <select className="input" value={form.customer} onChange={f('customer')}>
                   <option value="">Select Customer</option>
                   {customers.map(c => <option key={c.id} value={String(c.id)}>{c.full_name}</option>)}
                 </select>
               </div>
               <div>
-                <label className="label">Plot</label>
+                <label className="label">Plot *</label>
                 <select className="input" value={form.plot} onChange={f('plot')}>
                   <option value="">Select Plot</option>
-                  {plots.map(p => <option key={p.id} value={String(p.id)}>{p.plot_number}</option>)}
+                  {plots.map(p => <option key={p.id} value={String(p.id)}>{p.plot_number} — {p.project_name}</option>)}
                 </select>
               </div>
               <div>
-                <label className="label">Project</label>
+                <label className="label">Project *</label>
                 <select className="input" value={form.project} onChange={f('project')}>
                   <option value="">Select Project</option>
                   {projects.map(p => <option key={p.id} value={String(p.id)}>{p.project_name}</option>)}
@@ -269,7 +359,7 @@ export default function Page() {
                 <label className="label">Marketing Officer</label>
                 <select className="input" value={form.marketing_officer} onChange={f('marketing_officer')}>
                   <option value="">Select Officer</option>
-                  {officers.map(o => <option key={o.id} value={String(o.id)}>{o.user?.full_name || o.id}</option>)}
+                  {officers.map(o => <option key={o.id} value={String(o.id)}>{o.user?.full_name || `Officer #${o.id}`}</option>)}
                 </select>
               </div>
               <div>
@@ -277,15 +367,15 @@ export default function Page() {
                 <input className="input" type="date" value={form.booking_date} onChange={f('booking_date')} />
               </div>
               <div>
-                <label className="label">Total Price</label>
+                <label className="label">Total Price (৳)</label>
                 <input className="input" type="number" value={form.total_price} onChange={f('total_price')} />
               </div>
               <div>
-                <label className="label">Discount Amount</label>
+                <label className="label">Discount Amount (৳)</label>
                 <input className="input" type="number" value={form.discount_amount} onChange={f('discount_amount')} />
               </div>
               <div>
-                <label className="label">Token Amount</label>
+                <label className="label">Token Amount (৳)</label>
                 <input className="input" type="number" value={form.token_amount} onChange={f('token_amount')} />
               </div>
               <div>
@@ -293,7 +383,7 @@ export default function Page() {
                 <input className="input" type="date" value={form.token_paid_date} onChange={f('token_paid_date')} />
               </div>
               <div>
-                <label className="label">Down Payment Amount</label>
+                <label className="label">Down Payment (৳)</label>
                 <input className="input" type="number" value={form.down_payment_amount} onChange={f('down_payment_amount')} />
               </div>
               <div>
@@ -303,12 +393,9 @@ export default function Page() {
               <div>
                 <label className="label">Status</label>
                 <select className="input" value={form.status} onChange={f('status')}>
-                  <option value="pending">Pending</option>
-                  <option value="confirmed">Confirmed</option>
-                  <option value="agreement_done">Agreement Done</option>
-                  <option value="registration_done">Registration Done</option>
-                  <option value="cancelled">Cancelled</option>
-                  <option value="transferred">Transferred</option>
+                  {['pending', 'confirmed', 'agreement_done', 'registration_done', 'cancelled', 'transferred'].map(s => (
+                    <option key={s} value={s}>{s.replace(/_/g, ' ')}</option>
+                  ))}
                 </select>
               </div>
               <div className="full">
@@ -320,157 +407,158 @@ export default function Page() {
           <div className="modal-footer">
             <button className="btn-secondary" onClick={() => setModal(null)}>Cancel</button>
             <button className="btn-primary" onClick={save} disabled={saving}>
-              {saving ? 'Saving...' : 'Save Changes'}
+              {saving ? 'Saving...' : 'Save'}
             </button>
           </div>
         </Modal>
       )}
 
-      {/* VIEW MODAL — হুবহু আগেরটা */}
+      {/* ── VIEW MODAL ───────────────────────────────────────── */}
       {modal === 'view' && selected && (
-        <Modal title="Booking Detailed View" onClose={() => setModal(null)} size="lg">
+        <Modal title="Booking Details" onClose={() => setModal(null)} size="lg">
           <div className="modal-body">
-            <div className="form-grid">
-              {Object.entries(selected).map(([key, val]: [string, any]) => {
-                if (['customer_id', 'plot_id', 'project_id', 'marketing_officer_id'].includes(key)) return null
-                return (
-                  <div key={key} style={{ borderBottom: '1px solid #f3f4f6', paddingBottom: 8 }}>
-                    <div className="label" style={{ textTransform: 'capitalize', color: '#6b7280' }}>
-                      {key.replace(/_/g, ' ')}
-                    </div>
-                    <div style={{ fontWeight: 500, fontSize: 14 }}>
-                      {typeof val === 'number' && key.includes('price') ? fmt.currency(val) : String(val || '—')}
-                    </div>
-                  </div>
-                )
-              })}
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
+              {[
+                ['Booking Code', selected.booking_code],
+                ['Customer', selected.customer_name || selected.customer],
+                ['Plot', selected.plot_number || selected.plot],
+                ['Project', selected.project_name || selected.project],
+                ['Booking Date', fmt.date(selected.booking_date)],
+                ['Status', selected.status],
+                ['Total Price', fmt.currency(selected.total_price)],
+                ['Discount', fmt.currency(selected.discount_amount)],
+                ['Final Price', fmt.currency(selected.final_price)],
+                ['Token Amount', fmt.currency(selected.token_amount)],
+                ['Token Paid Date', fmt.date(selected.token_paid_date)],
+                ['Token Expiry', fmt.date(selected.token_expiry_date)],
+                ['Token Status', selected.token_status],
+                ['Down Payment', fmt.currency(selected.down_payment_amount)],
+                ['Total Paid', fmt.currency(selected.total_paid)],
+                ['Total Due', fmt.currency(selected.total_due)],
+                ['Marketing Officer', selected.marketing_officer || '—'],
+                ['Notes', selected.notes || '—'],
+              ].map(([label, value]) => (
+                <div key={label} style={{ borderBottom: '1px solid #f3f4f6', paddingBottom: 8 }}>
+                  <div className="label" style={{ color: '#6b7280' }}>{label}</div>
+                  <div style={{ fontWeight: 500, fontSize: 14 }}>{String(value || '—')}</div>
+                </div>
+              ))}
             </div>
           </div>
           <div className="modal-footer">
-            <button className="btn-primary" onClick={() => setModal(null)}>Close</button>
+            <button className="btn-secondary" onClick={() => setModal(null)}>Close</button>
+            <button className="btn-primary" onClick={() => { setModal(null); handleDownloadReceipt(selected) }}>
+              <FiDownload size={14} /> Download Receipt
+            </button>
           </div>
         </Modal>
       )}
 
-      {/* ✅ নতুন: INSTALLMENTS MODAL */}
-           {/* INSTALLMENTS MODAL */}
-     {modal === 'installments' && (
-  <Modal
-    title={`Installments - ${selected?.booking_code}`}
-    onClose={() => setModal(null)}
-    size="lg"
-  >
-    <div className="modal-body">
-
-      {installments.length === 0 ? (
-        <Empty />
-      ) : (
-        <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
-
-          {installments.map((ins: any) => (
-            <div
-              key={ins.id}
-              style={{
-                border: '1px solid #e5e7eb',
-                borderRadius: 10,
-                padding: 14,
-                background: ins.is_paid ? '#ecfdf5' : '#fff7ed'
-              }}
-            >
-
-              {/* Top row */}
-              <div style={{
-                display: 'flex',
-                justifyContent: 'space-between',
-                alignItems: 'center'
-              }}>
-                <div>
-                  <div style={{ fontWeight: 600 }}>
-                    Installment #{ins.installment_number}
-                  </div>
-                  <div style={{ fontSize: 12, color: '#6b7280' }}>
-                    Due Date: {ins.due_date}
-                  </div>
+      {/* ── INSTALLMENTS MODAL ──────────────────────────────── */}
+      {modal === 'installments' && (
+        <Modal title={`Installments — ${selected?.booking_code}`} onClose={() => setModal(null)} size="lg">
+          <div className="modal-body">
+            {installLoading ? <Spinner /> : installments.length === 0 ? <Empty label="No installments found" /> : (
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+                {/* Summary */}
+                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 10, marginBottom: 8 }}>
+                  {[
+                    { label: 'Total', value: fmt.currency(selected?.final_price), color: '#0369a1' },
+                    { label: 'Paid', value: fmt.currency(selected?.total_paid), color: '#16a34a' },
+                    { label: 'Due', value: fmt.currency(selected?.total_due), color: '#dc2626' },
+                  ].map(s => (
+                    <div key={s.label} style={{ background: '#f8fafc', borderRadius: 8, padding: '10px 14px', textAlign: 'center' }}>
+                      <div style={{ fontSize: 12, color: '#6b7280' }}>{s.label}</div>
+                      <div style={{ fontWeight: 700, fontSize: 15, color: s.color }}>{s.value}</div>
+                    </div>
+                  ))}
                 </div>
 
-                <span style={{
-                  padding: '4px 10px',
-                  borderRadius: 20,
-                  fontSize: 12,
-                  fontWeight: 600,
-                  background: ins.is_paid ? '#16a34a' : '#f97316',
-                  color: '#fff'
-                }}>
-                  {ins.is_paid ? 'PAID' : 'DUE'}
-                </span>
+                {installments.map((ins: any) => (
+                  <div key={ins.id} style={{
+                    border: `1px solid ${ins.is_paid ? '#bbf7d0' : '#fed7aa'}`,
+                    borderLeft: `4px solid ${ins.is_paid ? '#16a34a' : '#f97316'}`,
+                    borderRadius: 10, padding: '12px 16px',
+                    background: ins.is_paid ? '#f0fdf4' : '#fff7ed'
+                  }}>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 }}>
+                      <div>
+                        <span style={{ fontWeight: 700, fontSize: 14 }}>Installment #{ins.installment_number}</span>
+                        <span style={{ marginLeft: 10, fontSize: 12, color: '#6b7280' }}>Due: {fmt.date(ins.due_date)}</span>
+                      </div>
+                      <span style={{
+                        padding: '3px 10px', borderRadius: 20, fontSize: 11, fontWeight: 700,
+                        background: ins.is_paid ? '#16a34a' : '#f97316', color: '#fff'
+                      }}>
+                        {ins.is_paid ? 'PAID' : 'DUE'}
+                      </span>
+                    </div>
+                    <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 8, fontSize: 13 }}>
+                      <div>
+                        <div style={{ color: '#6b7280', fontSize: 11 }}>Total Amount</div>
+                        <div style={{ fontWeight: 600 }}>{fmt.currency(ins.amount)}</div>
+                      </div>
+                      <div>
+                        <div style={{ color: '#6b7280', fontSize: 11 }}>Paid</div>
+                        <div style={{ fontWeight: 600, color: '#16a34a' }}>{fmt.currency(ins.paid_amount)}</div>
+                      </div>
+                      <div>
+                        <div style={{ color: '#6b7280', fontSize: 11 }}>Due</div>
+                        <div style={{ fontWeight: 600, color: '#dc2626' }}>{fmt.currency(ins.due_amount)}</div>
+                      </div>
+                    </div>
+                    {ins.is_paid && ins.paid_date && (
+                      <div style={{ marginTop: 6, fontSize: 11, color: '#374151' }}>
+                        Paid on: {fmt.date(ins.paid_date)}
+                      </div>
+                    )}
+                    {ins.notes && (
+                      <div style={{ marginTop: 4, fontSize: 11, color: '#6b7280' }}>{ins.notes}</div>
+                    )}
+                  </div>
+                ))}
               </div>
-
-              {/* Amount row */}
-              <div style={{
-                display: 'grid',
-                gridTemplateColumns: '1fr 1fr 1fr',
-                marginTop: 10,
-                gap: 10,
-                fontSize: 13
-              }}>
-                <div>
-                  <div style={{ color: '#6b7280' }}>Total Amount</div>
-                  <div style={{ fontWeight: 600 }}>৳ {ins.amount}</div>
-                </div>
-
-                <div>
-                  <div style={{ color: '#6b7280' }}>Paid</div>
-                  <div style={{ fontWeight: 600, color: '#16a34a' }}>
-                    ৳ {ins.paid_amount}
-                  </div>
-                </div>
-
-                <div>
-                  <div style={{ color: '#6b7280' }}>Due</div>
-                  <div style={{ fontWeight: 600, color: '#dc2626' }}>
-                    ৳ {ins.due_amount}
-                  </div>
-                </div>
-              </div>
-
-              {/* Footer info */}
-              <div style={{
-                marginTop: 10,
-                fontSize: 12,
-                color: '#6b7280',
-                display: 'flex',
-                justifyContent: 'space-between'
-              }}>
-                <span>Customer: {ins.customer_name}</span>
-                <span>Booking: {ins.booking_code}</span>
-              </div>
-
-              {/* ✅ NEW: Paid Date */}
-              {ins.is_paid && (
-                <div style={{
-                  marginTop: 6,
-                  fontSize: 12,
-                  color: '#374151'
-                }}>
-                  Paid Date: {ins.updated_at ? new Date(ins.updated_at).toLocaleString() : '—'}
-                </div>
-              )}
-
-            </div>
-          ))}
-
-        </div>
+            )}
+          </div>
+        </Modal>
       )}
 
-    </div>
-
-    <div className="modal-footer">
-      <button className="btn-primary" onClick={() => setModal(null)}>
-        Close
-      </button>
-    </div>
-  </Modal>
-)}
+      {/* ── RECEIPTS LIST MODAL ──────────────────────────────── */}
+      {modal === 'receipt_list' && (
+        <Modal title={`Receipts — ${selected?.booking_code}`} onClose={() => setModal(null)} size="lg">
+          <div className="modal-body">
+            {receiptListLoading ? <Spinner /> : receiptList.length === 0 ? <Empty label="No receipts found" /> : (
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+                {receiptList.map((r: any) => (
+                  <div key={r.id} style={{
+                    border: '1px solid #e5e7eb', borderRadius: 10, padding: '14px 16px',
+                    display: 'flex', justifyContent: 'space-between', alignItems: 'center'
+                  }}>
+                    <div>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 4 }}>
+                        <span style={{ fontWeight: 700, fontSize: 14 }}>#{r.receipt_number}</span>
+                        <Badge status={r.status} />
+                        <span style={{ fontSize: 12, color: '#6b7280' }}>{r.receipt_type_display}</span>
+                      </div>
+                      <div style={{ fontSize: 13, color: '#374151' }}>
+                        Amount: <strong>{fmt.currency(r.amount)}</strong>
+                        <span style={{ marginLeft: 12 }}>Date: {fmt.date(r.payment_date)}</span>
+                        <span style={{ marginLeft: 12 }}>Mode: {r.payment_mode_display}</span>
+                      </div>
+                      {r.bank_name && <div style={{ fontSize: 12, color: '#6b7280', marginTop: 2 }}>Bank: {r.bank_name} {r.cheque_number ? `| Cheque: ${r.cheque_number}` : ''}</div>}
+                    </div>
+                    <button
+                      onClick={() => handleDownloadReceipt(selected, r)}
+                      style={{ background: '#fce7f3', color: '#9d174d', border: 'none', padding: '8px 14px', borderRadius: 8, cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 5, fontWeight: 600, fontSize: 13 }}>
+                      <FiDownload size={14} /> PDF
+                    </button>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+        </Modal>
+      )}
     </AppShell>
   )
 }
