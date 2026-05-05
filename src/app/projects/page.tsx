@@ -25,22 +25,22 @@ export default function ProjectsPage() {
   try {
     setLoading(true);
 
-    console.log("👉 API CALL START");
+    // console.log("👉 API CALL START");
 
     const url = ENDPOINTS.projects.list();
-    console.log("📡 URL:", url);
+    // console.log("📡 URL:", url);
 
     const res = await fetchList(url);
 
-    console.log("✅ RESPONSE:", res);
-    console.log("📦 DATA:", res.data);
+    // console.log("✅ RESPONSE:", res);
+    // console.log("📦 DATA:", res.data);
 
     setItems(res.data);
   } catch (err) {
     console.log("❌ ERROR:", err);
   } finally {
     setLoading(false);
-    console.log("🏁 LOADING FINISHED");
+    // console.log("🏁 LOADING FINISHED");
   }
 };
   useEffect(() => { load() }, [])
