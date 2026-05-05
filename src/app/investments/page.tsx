@@ -3,100 +3,308 @@ import { useEffect, useState } from 'react'
 import AppShell from '@/components/layout/AppShell'
 import PageHeader from '@/components/ui/PageHeader'
 import Modal from '@/components/ui/Modal'
-import Badge from '@/components/ui/Badge'
 import Spinner from '@/components/ui/Spinner'
 import Empty from '@/components/ui/Empty'
 import toast from 'react-hot-toast'
 import { fetchList, createItem, updateItem, deleteItem, ENDPOINTS } from '@/lib/api'
-import { fmt } from '@/lib/utils'
 import { FiEdit2, FiTrash2, FiEye } from 'react-icons/fi'
 
-const EMPTY: any = {investor: 0, project: 0, invest_amount: 0, invest_date: '', maturity_date: '', monthly_dividend_rate: 0, agreement_number: '', status: '', notes: ''}
+const EMPTY: any = {
+  investor: '',
+  invest_amount: '',
+  investor_code: '',
+  investor_name: '',
+  invest_date: '',
+  monthly_dividend_rate: '',
+  agreement_number: '',
+  status: 'active',
+  notes: ''
+}
 
 export default function Page() {
   const [items, setItems] = useState<any[]>([])
+  const [investors, setInvestors] = useState<any[]>([])
   const [loading, setLoading] = useState(true)
-  const [modal, setModal] = useState<'add'|'edit'|'view'|null>(null)
+  const [modal, setModal] = useState<'add' | 'edit' | 'view' | null>(null)
   const [form, setForm] = useState<any>(EMPTY)
   const [selected, setSelected] = useState<any>(null)
   const [saving, setSaving] = useState(false)
 
   const ep = ENDPOINTS.investments
-  const load = () => { setLoading(true); fetchList(ep.list()).then(r => setItems(r.data)).finally(() => setLoading(false)) }
-  useEffect(() => { load() }, [])
-  const f = (k: string) => (e: any) => setForm((p:any) => ({ ...p, [k]: e.target.value }))
-  const openAdd  = () => { setForm(EMPTY); setModal('add') }
-  const openEdit = (item: any) => { setSelected(item); setForm(item); setModal('edit') }
-  const openView = (item: any) => { setSelected(item); setModal('view') }
+
+  const load = () => {
+    setLoading(true)
+    fetchList(ep.list())
+      .then(r => setItems(r.data))
+      .finally(() => setLoading(false))
+  }
+
+  const loadInvestors = async () => {
+    try {
+      const res = await fetchList(ENDPOINTS.investors.list())
+      setInvestors(res.data?.results || res.data || [])
+    } catch {
+      toast.error('Failed to load investors')
+    }
+  }
+
+  useEffect(() => {
+    load()
+    loadInvestors()
+  }, [])
+
+  const f = (k: string) => (e: any) =>
+    setForm((p: any) => ({ ...p, [k]: e.target.value }))
+
+  const openAdd = () => {
+    setForm({ ...EMPTY, investor: '', invest_amount: '' })
+    setModal('add')
+  }
+
+  const openEdit = (item: any) => {
+    setSelected(item)
+
+    setForm({
+      investor: item.investor?.id || item.investor,
+      invest_amount: item.invest_amount,
+      investor_code: item.investor_code || '',
+      investor_name: item.investor_name || '',
+      invest_date: item.invest_date || '',
+      monthly_dividend_rate: item.monthly_dividend_rate || '',
+      agreement_number: item.agreement_number || '',
+      status: item.status || 'active',
+      notes: item.notes || ''
+    })
+
+    setModal('edit')
+  }
+
+  const openView = (item: any) => {
+    setSelected(item)
+    setModal('view')
+  }
+
   const save = async () => {
     setSaving(true)
+
+    const cleanDate = (d: any) => {
+      if (!d || d === '') return undefined
+      return String(d).split('T')[0]
+    }
+
     try {
-      if (modal === 'add') { await createItem(ep.create(), form); toast.success('Created') }
-      else { await updateItem(ep.detail(selected.id), form); toast.success('Updated') }
-      setModal(null); load()
-    } catch { toast.error('Failed') } finally { setSaving(false) }
+      const payload = {
+        ...form,
+        investor: Number(form.investor),
+        invest_amount: Number(form.invest_amount),
+        invest_date: cleanDate(form.invest_date),
+        monthly_dividend_rate: Number(form.monthly_dividend_rate || 0)
+      }
+
+      if (!payload.investor || !payload.invest_amount) {
+        toast.error('Investor and Amount are required')
+        setSaving(false)
+        return
+      }
+
+      if (modal === 'add') {
+        await createItem(ep.create(), payload)
+        toast.success('Created')
+      } else {
+        await updateItem(ep.detail(selected.id), payload)
+        toast.success('Updated')
+      }
+
+      setModal(null)
+      load()
+    } catch (err: any) {
+      console.log(err?.response?.data)
+      toast.error('Failed to save investment')
+    } finally {
+      setSaving(false)
+    }
   }
+
   const remove = async (id: number) => {
-    if (!confirm('Delete?')) return
-    try { await deleteItem(ep.detail(id)); toast.success('Deleted'); load() } catch { toast.error('Failed') }
+    if (!confirm('Delete this investment?')) return
+    await deleteItem(ep.detail(id))
+    toast.success('Deleted')
+    load()
   }
+
+  const getVal = (v: any) =>
+    v === null || v === '' || v === undefined ? '—' : String(v)
 
   return (
     <AppShell>
-      <PageHeader title="Investments" subtitle="Investment records" onAdd={openAdd} addLabel="New Investment" />
-      <div className="card">
+
+      <PageHeader
+        title="Investments"
+        subtitle="Manage investor investments"
+        onAdd={openAdd}
+        addLabel="Add Investment"
+      />
+
+      {/* TABLE */}
+      <div className="bg-white rounded-3xl shadow-sm border overflow-hidden">
         {loading ? <Spinner /> : items.length === 0 ? <Empty /> : (
-          <div className="table-wrap">
-            <table>
-              <thead><tr><th>investor</th><th>project</th><th>invest_amount</th><th>invest_date</th><th>maturity_date</th><th>monthly_dividend_rate</th><th>status</th><th>Actions</th></tr></thead>
-              <tbody>{items.map(item => (
-                <tr key={item.id}>
-                  <td>{item.investor ?? '—'}</td><td>{item.project ?? '—'}</td><td>{fmt.currency(item.invest_amount)}</td><td>{item.invest_date ?? '—'}</td><td>{item.maturity_date ?? '—'}</td><td>{item.monthly_dividend_rate ?? '—'}</td><td><Badge status={String(item.status)} /></td>
-                  <td>
-                    <div style={{ display:'flex', gap:6 }}>
-                      <button onClick={() => openView(item)} style={{ background:'#e0f2fe', color:'#0369a1', border:'none', padding:'4px 8px', borderRadius:6, cursor:'pointer' }}><FiEye size={13}/></button>
-                      <button onClick={() => openEdit(item)} style={{ background:'#fef9c3', color:'#92400e', border:'none', padding:'4px 8px', borderRadius:6, cursor:'pointer' }}><FiEdit2 size={13}/></button>
-                      <button onClick={() => remove(item.id)} className="btn-danger" style={{ padding:'4px 8px' }}><FiTrash2 size={13}/></button>
-                    </div>
-                  </td>
+          <div className="overflow-x-auto">
+            <table className="w-full text-left">
+
+              <thead className="bg-slate-50 border-b">
+                <tr>
+                  <th className="p-5">Code</th>
+                  <th className="p-5">Investor</th>
+                  <th className="p-5">Amount</th>
+                  <th className="p-5">Date</th>
+                  <th className="p-5">Dividend Rate</th>
+                  <th className="p-5">Profit</th>
+                  <th className="p-5 text-right">Action</th>
                 </tr>
-              ))}</tbody>
+              </thead>
+
+              <tbody>
+                {items.map(item => (
+                  <tr key={item.id}>
+                    <td className="p-5 font-bold">{getVal(item.investor_code)}</td>
+                    <td className="p-5">
+                      {item.investor_name || item.investor?.investor_name || '—'}
+                    </td>
+                    <td className="p-5">{getVal(item.invest_amount)}</td>
+                    <td className="p-5">{getVal(item.invest_date)}</td>
+                    <td className="p-5">{getVal(item.monthly_dividend_rate)}</td>
+                    <td className="p-5">{getVal(item.total_profit_received)}</td>
+
+                    <td className="p-5 text-right">
+                      <div className="flex justify-end gap-2">
+
+                        <button onClick={() => openView(item)}
+                          className="px-3 py-1.5 bg-blue-100 text-blue-700 rounded-lg">
+                          <FiEye />
+                        </button>
+
+                        <button onClick={() => openEdit(item)}
+                          className="px-3 py-1.5 bg-yellow-100 text-yellow-700 rounded-lg">
+                          <FiEdit2 />
+                        </button>
+
+                        <button onClick={() => remove(item.id)}
+                          className="px-3 py-1.5 bg-red-100 text-red-700 rounded-lg">
+                          <FiTrash2 />
+                        </button>
+
+                      </div>
+                    </td>
+
+                  </tr>
+                ))}
+              </tbody>
+
             </table>
           </div>
         )}
       </div>
-      {(modal === 'add' || modal === 'edit') && (
-        <Modal title={modal === 'add' ? 'New Investments' : 'Edit Investments'} onClose={() => setModal(null)} size="lg">
-          <div className="modal-body">
-            <div className="form-grid">
-              <div><label className="label">Investor ID *</label><input className="input" type="number" value={form.investor||''} onChange={f('investor')} /></div>
-              <div><label className="label">Project ID</label><input className="input" type="number" value={form.project||''} onChange={f('project')} /></div>
-              <div><label className="label">Invest Amount *</label><input className="input" type="number" value={form.invest_amount||''} onChange={f('invest_amount')} /></div>
-              <div><label className="label">Invest Date</label><input className="input" type="date" value={form.invest_date||''} onChange={f('invest_date')} /></div>
-              <div><label className="label">Maturity Date</label><input className="input" type="date" value={form.maturity_date||''} onChange={f('maturity_date')} /></div>
-              <div><label className="label">Monthly Dividend Rate (%)</label><input className="input" type="number" value={form.monthly_dividend_rate||''} onChange={f('monthly_dividend_rate')} /></div>
-              <div><label className="label">Agreement Number</label><input className="input" type="text" value={form.agreement_number||''} onChange={f('agreement_number')} /></div>
-              <div><label className="label">Status</label><select className="input" value={form.status||''} onChange={f('status')}><option key='active' value='active'>active</option><option key='matured' value='matured'>matured</option><option key='cancelled' value='cancelled'>cancelled</option><option key='withdrawn' value='withdrawn'>withdrawn</option></select></div>
-              <div className="full"><label className="label">Notes</label><textarea className="input" rows={2} value={form.notes||''} onChange={f('notes')} /></div>
-            </div>
-          </div>
-          <div className="modal-footer">
-            <button className="btn-secondary" onClick={() => setModal(null)}>Cancel</button>
-            <button className="btn-primary" onClick={save} disabled={saving}>{saving ? 'Saving...' : 'Save'}</button>
-          </div>
-        </Modal>
-      )}
+
+      {/* ADD / EDIT */}
+      {/* ADD / EDIT */}
+{(modal === 'add' || modal === 'edit') && (
+  <Modal
+    title={modal === 'add' ? 'Add Investment' : 'Edit Investment'}
+    onClose={() => setModal(null)}
+    size="lg"
+  >
+
+    <div className="modal-body">
+      <div className="form-grid">
+
+        {/* INVESTOR */}
+        <div>
+          <label className="label">Investor</label>
+          <select className="input" value={form.investor} onChange={f('investor')}>
+            <option value="">Select Investor</option>
+            {investors.map(i => (
+              <option key={i.id} value={i.id}>
+                {i.investor_name || i.user_name || i.user?.full_name}
+              </option>
+            ))}
+          </select>
+        </div>
+
+        {/* AMOUNT */}
+        <div>
+          <label className="label">Invest Amount</label>
+          <input className="input" value={form.invest_amount} onChange={f('invest_amount')} />
+        </div>
+
+        {/* INVESTOR CODE */}
+        <div>
+          <label className="label">Investor Code</label>
+          <input className="input" value={form.investor_code} onChange={f('investor_code')} />
+        </div>
+
+        {/* INVESTOR NAME */}
+        <div>
+          <label className="label">Investor Name</label>
+          <input className="input" value={form.investor_name} onChange={f('investor_name')} />
+        </div>
+
+        {/* INVEST DATE */}
+        <div>
+          <label className="label">Invest Date</label>
+          <input type="date" className="input" value={form.invest_date || ''} onChange={f('invest_date')} />
+        </div>
+
+        {/* DIVIDEND RATE */}
+        <div>
+          <label className="label">Dividend Rate</label>
+          <input className="input" value={form.monthly_dividend_rate} onChange={f('monthly_dividend_rate')} />
+        </div>
+
+        {/* AGREEMENT */}
+        <div>
+          <label className="label">Agreement No</label>
+          <input className="input" value={form.agreement_number} onChange={f('agreement_number')} />
+        </div>
+
+        {/* NOTES */}
+        <div style={{ gridColumn: 'span 2' }}>
+          <label className="label">Notes</label>
+          <textarea className="input" value={form.notes} onChange={f('notes')} />
+        </div>
+
+      </div>
+    </div>
+
+    <div className="modal-footer">
+      <button onClick={() => setModal(null)}>Cancel</button>
+      <button onClick={save} disabled={saving}>
+        {saving ? 'Saving...' : 'Save'}
+      </button>
+    </div>
+
+  </Modal>
+)}
+
+      {/* VIEW */}
       {modal === 'view' && selected && (
-        <Modal title="Investments Details" onClose={() => setModal(null)} size="lg">
+        <Modal title="Investment Details" onClose={() => setModal(null)}>
           <div className="modal-body">
             <div className="form-grid">
-              {Object.entries(selected).filter(([k]) => !['created_at','updated_at'].includes(k)).map(([k,v]) => (
-                <div key={k}><div className="label">{k.replace(/_/g,' ')}</div><div style={{ fontSize:14, fontWeight:500 }}>{String(v) || '—'}</div></div>
+              {Object.entries(selected).map(([k, v]: any) => (
+                <div key={k}>
+                  <div className="label">{k.replace(/_/g, ' ')}</div>
+                  <div>{v === null || v === '' ? '—' : String(v)}</div>
+                </div>
               ))}
             </div>
           </div>
+
+          <div className="modal-footer">
+            <button onClick={() => setModal(null)}>Close</button>
+          </div>
         </Modal>
       )}
+
     </AppShell>
   )
 }
