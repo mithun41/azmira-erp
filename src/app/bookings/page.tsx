@@ -99,20 +99,30 @@ export default function BookingsPage() {
   const openView = (item: any) => { setSelected(item); setModal('view') }
 
   // ── Installments modal ─────────────────────────────────────
-  const openInstallments = async (booking: any) => {
-    setSelected(booking)
-    setInstallments([])
-    setModal('installments')
-    setInstallLoading(true)
-    try {
-      const res = await fetchList(`${ENDPOINTS.installments.list()}?booking=${booking.id}`)
-      setInstallments(res.data || [])
-    } catch {
-      toast.error('Could not load installments')
-    } finally {
-      setInstallLoading(false)
-    }
+ const openInstallments = async (booking: any) => {
+  setSelected(booking)
+  setInstallments([])
+  setModal('installments')
+  setInstallLoading(true)
+
+  try {
+    const res = await fetchList(`${ENDPOINTS.installments.list()}`)
+    const all = res.data || []
+
+    // 🔥 FRONTEND FILTER (safe fallback)
+    const filtered = all.filter(
+      (ins: any) =>
+        String(ins.booking) === String(booking.id) ||
+        String(ins.booking_id) === String(booking.id)
+    )
+
+    setInstallments(filtered)
+  } catch {
+    toast.error('Could not load installments')
+  } finally {
+    setInstallLoading(false)
   }
+}
 
   // ── Receipts list modal ────────────────────────────────────
   const openReceiptList = async (booking: any) => {
